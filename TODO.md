@@ -71,7 +71,7 @@ Every phase keeps this current. Anything deferred to launch goes here.
 
 ## Found in R4
 
-- [ ] Before mainnet: decide whether g6 should also flag copied weights with different code (today it needs both code and weights to match).
+- [ ] Later milestone (decided 27 Nov to defer): g6 only flags a copy when code and weights both match; copied weights with changed code pass. Not foolproof whatever we do; revisit with weights-only or similarity matching.
 - [ ] Run the HF private-download path against a private test repo with a fine-grained read token (the reference weights are public).
-- [ ] Read the `radiant-bittensor` org's private storage quota (huggingface.co/organizations/radiant-bittensor/settings/billing); pins accumulate one per passing submission until reveal.
-- [ ] Set `MODAL_TOKEN_ID`/`MODAL_TOKEN_SECRET` in `.env` (a validator workspace) before running the worker container; the R4 gate used the host's `modal setup` login.
+- [x] `radiant-bittensor` has 100 GB of private storage on the free plan (0 used on 27 Nov). Pins move to public storage on reveal, so only unrevealed pins count. Watch it if campaigns allow large weights (cap 2 GB each).
+- [x] `MODAL_TOKEN_ID`/`MODAL_TOKEN_SECRET` set in `.env` (token "radiant", workspace tripathiarpan20).
