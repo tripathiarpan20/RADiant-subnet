@@ -1,0 +1,47 @@
+{
+  "manifest_version": 1,
+  "campaign_id": "testnet-cxr-01",
+  "title": "Testnet chest X-ray 01: TB, silicosis, pneumonia, fibrosis",
+  "labels": ["tuberculosis", "silicosis", "pneumonia", "fibrosis"],
+  "solution": {
+    "base_class": "radiant_sdk.models.v1:ChestXRayClassifier",
+    "sdk_version": "1.0.0",
+    "format": "r1"
+  },
+  "data_pool": {"source": "datahive", "api_version": "v1", "countries": [], "positive_certainty": ["definite", "probable"]},
+  "hardware": {"allowed_gpus": ["L4", "L40S"], "max_cpus": 8, "max_memory_mib": 32768},
+  "limits": {
+    "max_solution_zip_mb": 10,
+    "max_solution_unzipped_mb": 50,
+    "max_weights_mb": 2048,
+    "image_cap_gb": 10,
+    "modal_build_timeout_s": 1800,
+    "model_load_timeout_s": 120,
+    "eval_timeout_min_s": 300,
+    "eval_timeout_per_megapixel_s": 0.05
+  },
+  "harness": {"input_dtype": "uint16", "max_batch_size": 64, "prediction_decimals": 3},
+  "rounds": {
+    "round_size": 5,
+    "round_max_wait_s": 21600,
+    "round_sample_size": 100,
+    "min_positives_per_label": 20,
+    "min_negatives_per_label": 20
+  },
+  "scoring_rule": {
+    "name": "weighted_quality_speed_cost_v1",
+    "metric": "auroc",
+    "curve": {"chance": 0.5, "knee": 0.8, "knee_value": 0.8, "curvature": 2.0},
+    "weights": {"quality": 0.7, "speed": 0.15, "cost": 0.15},
+    "overtake_epsilon": 0.01
+  },
+  "gates": {"obfuscation_rules": "radiant-v1"},
+  "emission_rule": {"name": "linear_decay", "start_weight": 0.1, "floor_weight": 0.02, "decay_blocks": 201600},
+  "submission_fee": {"amount_tao": "0.01", "recipient": "5GrwvaEF5zXb26Fz9rcQpDWS57CtERHpNehXCPcNoHGKutQY"},
+  "visibility": {
+    "mode": "public_after_reveal",
+    "reveal_delay_s": 172800,
+    "fast_reveal_quality_threshold": 0.5,
+    "fast_reveal_delay_s": 21600
+  }
+}
