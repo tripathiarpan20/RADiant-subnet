@@ -71,3 +71,34 @@ def test_harness_failure_is_a_rejection(manifest):
     with pytest.raises(R.SolutionRejected) as e:
         run_qualification(FakeModal(sb), None, None, DESCRIPTOR, manifest, gpu_wait_s=5)
     assert e.value.code == "LOAD_CRASH"
+
+
+class SequenceModal:
+    """Each create() returns the next sandbox; a 'block' entry makes create() hang (as Modal's can)."""
+
+    def __init__(self, items):
+        self.items, self.created = list(items), []
+        self.Sandbox = self
+
+    def create(self, *a, **kw):
+        item = self.items.pop(0)
+        if item == "block":
+            threading.Event().wait(5)
+            item = FakeSandbox([], block=threading.Event())
+        self.created.append(item)
+        return item
+
+
+def test_a_stuck_sandbox_is_replaced_by_a_fresh_request(manifest):
+    out = f"{STARTED_MARKER}\n{RESULT_PREFIX}{json.dumps(PASSED)}\n"
+    stuck, good = FakeSandbox([], block=threading.Event()), FakeSandbox([out])
+    m = SequenceModal([stuck, good])
+    r = run_qualification(m, None, None, DESCRIPTOR, manifest, gpu_wait_s=10, restart_after_s=0.3)
+    assert r["status"] == "passed" and stuck.terminated and len(m.created) == 2
+
+
+def test_a_blocking_create_is_abandoned_and_retried(manifest):
+    out = f"{STARTED_MARKER}\n{RESULT_PREFIX}{json.dumps(PASSED)}\n"
+    m = SequenceModal(["block", FakeSandbox([out])])
+    r = run_qualification(m, None, None, DESCRIPTOR, manifest, gpu_wait_s=10, restart_after_s=0.3)
+    assert r["status"] == "passed"

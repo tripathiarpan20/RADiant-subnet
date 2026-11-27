@@ -217,7 +217,8 @@ def eval_timeout_for(limits: dict, megapixels: float) -> float:
 
 
 def run_qualification(modal, app, image, descriptor: dict, manifest: dict, *, eval_timeout_s: float | None = None,
-                      gpu_wait_s: float = 900, sink: list[str] | None = None, echo: bool = True) -> dict:
+                      gpu_wait_s: float = 900, sink: list[str] | None = None, echo: bool = True,
+                      restart_after_s: float = 120) -> dict:
     """Qualify in an offline sandbox. ``sink`` collects the sandbox's log (shown to the miner)."""
     limits, harness = manifest["limits"], manifest["harness"]
     if eval_timeout_s is None:
@@ -228,53 +229,26 @@ def run_qualification(modal, app, image, descriptor: dict, manifest: dict, *, ev
            "--labels", ",".join(manifest["labels"]), "--batch-size", str(descriptor["batch_size"]),
            "--decimals", str(harness["prediction_decimals"]),
            "--load-timeout", str(limits["model_load_timeout_s"]), "--eval-timeout", str(eval_timeout_s)]
-    t0 = time.monotonic()
-    sb = modal.Sandbox.create(
-        *cmd, app=app, image=image, gpu=descriptor["gpu"],
+    kwargs = dict(
+        app=app, image=image, gpu=descriptor["gpu"],
         cpu=(float(descriptor["cpus"]), float(descriptor["cpus"])),
         memory=(min(4096, manifest["hardware"]["max_memory_mib"]), manifest["hardware"]["max_memory_mib"]),
         block_network=True,
         timeout=int(limits["model_load_timeout_s"] + eval_timeout_s + 120),
         secrets=[], include_oidc_identity_token=False, workdir="/solution",
-        tags={"purpose": "radiant-sdk-validate"},
+        tags={"purpose": "radiant-qualification"},
     )
-    q: queue.Queue = queue.Queue()
-
-    def pump() -> None:
-        try:
-            for chunk in sb.stdout:
-                q.put(chunk if isinstance(chunk, str) else chunk.decode("utf-8", "replace"))
-        except Exception:
-            pass
-        finally:
-            q.put(None)
-
-    threading.Thread(target=pump, daemon=True).start()
-    started: float | None = None
+    t0 = time.monotonic()
+    sb, q, started = start_sandbox(modal, cmd, kwargs, gpu=descriptor["gpu"], wait_s=gpu_wait_s,
+                                   restart_after_s=restart_after_s)
     lines: list[str] = []
     try:
         while True:
-            if started is None:
-                remaining = t0 + gpu_wait_s - time.monotonic()
-                if remaining <= 0:
-                    raise R.InfraUnavailable(
-                        R.GPU_UNAVAILABLE,
-                        f"Modal had no {descriptor['gpu']} free after {gpu_wait_s:.0f}s; nothing was billed for the "
-                        "wait. Retry later, raise --gpu-wait, or set another allowed GPU in radiant_solution.json")
-                try:
-                    chunk = q.get(timeout=min(remaining, 30))
-                except queue.Empty:
-                    log("qualify", f"waiting for a {descriptor['gpu']} ({time.monotonic() - t0:.0f}s so far)")
-                    continue
-            else:
-                chunk = q.get()
+            chunk = q.get()
             if chunk is None:
                 break
             for text in chunk.splitlines(keepends=True):
                 if text.strip() == STARTED_MARKER:
-                    if started is None:
-                        started = time.monotonic()
-                        log("qualify", f"container started after {started - t0:.0f}s")
                     continue
                 lines.append(text)
                 if not text.startswith(RESULT_PREFIX):
@@ -295,7 +269,6 @@ def run_qualification(modal, app, image, descriptor: dict, manifest: dict, *, ev
             sb.terminate()
         except Exception:
             pass
-    started = started or t0
     result = parse_result("".join(lines))
     wall = time.monotonic() - started
     result["sandbox_wall_s"] = round(wall, 1)
@@ -306,6 +279,100 @@ def run_qualification(modal, app, image, descriptor: dict, manifest: dict, *, ev
     if result["load_total_s"] > limits["model_load_timeout_s"]:
         raise R.SolutionRejected(R.LOAD_TIMEOUT, f"load took {result['load_total_s']}s")
     return result
+
+
+def start_sandbox(modal, cmd: list[str], kwargs: dict, *, gpu: str, wait_s: float, restart_after_s: float = 120):
+    """Create a sandbox and wait for the harness's start marker; (sandbox, output queue, started_at).
+
+    Seen on Modal (27 Nov): one sandbox can sit unscheduled for 15+ minutes
+    while a fresh request with the same spec starts in seconds, and
+    ``Sandbox.create`` itself can block while it waits. So create runs in a
+    thread, and a request that hasn't started within ``restart_after_s`` is
+    cancelled and made again, until ``wait_s`` is used up. Then it is
+    ``GPU_UNAVAILABLE``: infrastructure, never the miner's fault, and nothing
+    was billed for the wait. The queue carries everything the sandbox prints,
+    from the start marker on, then None when it exits.
+    """
+    t0 = time.monotonic()
+    deadline = t0 + wait_s
+    attempt = 0
+    while True:
+        now = time.monotonic()
+        if now >= deadline:
+            raise R.InfraUnavailable(
+                R.GPU_UNAVAILABLE,
+                f"Modal didn't start a {gpu} sandbox within {wait_s:.0f}s ({attempt} requests); nothing was billed "
+                "for the wait. Retry later, raise --gpu-wait, or pick another allowed GPU in radiant_solution.json")
+        attempt += 1
+        attempt_end = min(deadline, now + restart_after_s)
+        box: dict = {}
+
+        def create(box=box) -> None:
+            try:
+                box["sb"] = modal.Sandbox.create(*cmd, **kwargs)
+            except Exception as exc:  # surfaced below
+                box["error"] = exc
+            if box.get("abandoned") and "sb" in box:
+                try:
+                    box["sb"].terminate()  # a request we gave up on landed after all
+                except Exception:
+                    pass
+
+        th = threading.Thread(target=create, daemon=True)
+        th.start()
+        th.join(max(0.0, attempt_end - time.monotonic()))
+        if th.is_alive():
+            box["abandoned"] = True
+            log("qualify", f"no {gpu} scheduled after {time.monotonic() - t0:.0f}s; making a fresh request")
+            continue
+        if "error" in box:
+            raise R.InfraUnavailable(R.SANDBOX_START_FAILED, f"{type(box['error']).__name__}: {box['error']}")
+        sb = box["sb"]
+        raw: queue.Queue = queue.Queue()
+
+        def pump(sb=sb, raw=raw) -> None:
+            try:
+                for chunk in sb.stdout:
+                    raw.put(chunk if isinstance(chunk, str) else chunk.decode("utf-8", "replace"))
+            except Exception:
+                pass
+            finally:
+                raw.put(None)
+
+        threading.Thread(target=pump, daemon=True).start()
+        seen: list = []
+        while True:
+            left = attempt_end - time.monotonic()
+            if left <= 0:
+                break
+            try:
+                chunk = raw.get(timeout=left)
+            except queue.Empty:
+                break
+            seen.append(chunk)
+            started = chunk is None or any(line.strip() == STARTED_MARKER for line in chunk.splitlines())
+            if not started:
+                continue
+            out: queue.Queue = queue.Queue()
+            for c in seen:
+                out.put(c)
+            if chunk is not None:
+                def relay(src=raw, dst=out) -> None:
+                    while True:
+                        item = src.get()
+                        dst.put(item)
+                        if item is None:
+                            return
+
+                threading.Thread(target=relay, daemon=True).start()
+            started_at = time.monotonic()
+            log("qualify", f"container started after {started_at - t0:.0f}s (request {attempt})")
+            return sb, out, started_at
+        try:
+            sb.terminate()
+        except Exception:
+            pass
+        log("qualify", f"{gpu} sandbox not started after {time.monotonic() - t0:.0f}s; making a fresh request")
 
 
 # ── receipt ─────────────────────────────────────────────────────────────────
