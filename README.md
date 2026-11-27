@@ -26,12 +26,14 @@ report in `docs/implementation/R<n>.md`, and `TODO.md` is the launch checklist.
 ## Running the validator stack
 
 ```bash
-cp .env.example .env    # set the passwords
+scripts/init_env.sh     # .env with generated passwords
 docker compose up -d --build
 curl -s 'localhost:8080/v1/campaigns?include_drafts=1'
 ```
 
 ## Miner SDK
+
+See [docs/miners.md](docs/miners.md) for prerequisites (Python 3.12, uv, Modal, Hugging Face, a testnet wallet) and the solution rules.
 
 ```bash
 pip install '.[sdk]'          # or: uv sync --extra sdk
