@@ -34,5 +34,5 @@ Every phase keeps this current. Anything deferred to launch goes here.
 
 - [ ] R3: `radiant-sdk submit` presign, PUT, fee payment and commitment (it stops after the receipt check today), and `status` against the intake API.
 - [ ] R4: the validator's g7 build uses a killable build worker (as vidaio does) instead of the SDK's thread deadline, and g8 times load and evaluation from outside the sandbox.
-- [ ] R4/R6: treat Modal GPU capacity waits as infrastructure, never miner fault (L4 queued 167 s and longer during R2).
+- [ ] R4/R6: a sandbox that never starts (no GPU within `SANDBOX_GPU_WAIT_S`, default 900 s) is `infra_failed`, requeued once as in Pareton, never scored or rejected; a leader infra failure voids the round. Reuse the harness start marker and `GPU_UNAVAILABLE` from R2. (L4 queued 167 s and over 15 min during R2.)
 - [ ] Before launch: decide whether to swap the synthetic warmup set for licensed public X-rays.

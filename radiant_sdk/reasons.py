@@ -26,8 +26,13 @@ class InfraUnavailable(Exception):
         super().__init__(f"{code}: {detail}")
 
 
-# Infrastructure, never a miner fault
+# Infrastructure, never a miner fault. In rounds and in g8 qualification these
+# make an entry infra_failed: not scored, requeued once (as Pareton), and only
+# a second one is terminal. Anything after the harness's start marker is the
+# miner's (crash, timeout, bad output).
 GPU_UNAVAILABLE = "GPU_UNAVAILABLE"
+SANDBOX_START_FAILED = "SANDBOX_START_FAILED"
+INFRA_CODES = frozenset({GPU_UNAVAILABLE, SANDBOX_START_FAILED})
 
 # g1 integrity / g2 archive safety
 ZIP_TOO_LARGE = "ZIP_TOO_LARGE"
