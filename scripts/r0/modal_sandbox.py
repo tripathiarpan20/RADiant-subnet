@@ -95,7 +95,7 @@ def build_image(modal):
     bake = "python -c \"import torchxrayvision as xrv; xrv.models.DenseNet(weights='densenet121-res224-all')\""
     return (
         modal.Image.debian_slim(python_version="3.12")
-        .pip_install("torch==2.5.1", "torchvision==0.20.1", "torchxrayvision>=1.3,<1.4", "numpy<2.3")
+        .pip_install("torch==2.5.1", "torchvision==0.20.1", "torchxrayvision==1.5.7", "numpy<2.3")
         .run_commands(bake)
     )
 
