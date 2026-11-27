@@ -177,8 +177,11 @@ def g2_to_g4(conn, run: Run):
 
 def g5_weights(conn, run: Run, deps: Deps, env: dict) -> Path:
     manifest = run.campaign["manifest"]
-    weights_dir, info = deps.fetch_weights(env, manifest["limits"]["max_weights_mb"], run.scratch / "hf",
-                                           manifest["gates"]["weights_formats"])
+    try:
+        weights_dir, info = deps.fetch_weights(env, manifest["limits"]["max_weights_mb"], run.scratch / "hf",
+                                               manifest["gates"]["weights_formats"])
+    except R.InfraUnavailable as exc:
+        raise Infra(exc.code, exc.detail) from None
     digest = weights_digest(weights_dir)
     update(conn, run.sub["id"], weights_repo=info["repo"], weights_revision=info["revision"], weights_sha256=digest)
     event(conn, run, "weights_ok", repo=info["repo"], revision=info["revision"], bytes=info["bytes"])
@@ -224,6 +227,8 @@ def g7_build(conn, run: Run, deps: Deps, weights_dir: Path) -> str:
     timeout = run.campaign["manifest"]["limits"]["modal_build_timeout_s"]
     try:
         built = deps.build(code_dir, weights_dir, timeout)
+    except R.InfraUnavailable as exc:
+        raise Infra(exc.code, exc.detail) from None
     except R.SolutionRejected as exc:
         save_log(conn, run.sub["id"], "build", exc.detail)
         raise

@@ -26,6 +26,11 @@ from radiant_sdk.redact import redact_text
 
 IMAGE_PREFIX = "RADIANT_IMAGE_ID "
 MAX_LOG_BYTES = 200_000
+INFRA_EXIT_CODE = 75  # EX_TEMPFAIL: Modal auth/network/service outage, never the miner's fault
+_MODAL_INFRA_EXC = frozenset({
+    "AuthError", "ConnectionError", "TimeoutError", "InternalError", "ServiceError",
+    "ResourceExhaustedError", "RemoteError", "ServerError", "UnavailableError",
+})
 _CHILD_ENV_ALLOW = frozenset({
     "PATH", "HOME", "USER", "TMPDIR", "TEMP", "TMP", "LANG", "LC_ALL", "PYTHONPATH",
     "MODAL_TOKEN_ID", "MODAL_TOKEN_SECRET", "MODAL_PROFILE", "MODAL_ENVIRONMENT", "MODAL_CONFIG_PATH",
@@ -70,6 +75,9 @@ def build_image(code_dir: Path, weights_dir: Path, timeout_s: float, *, app_name
         os.unlink(f.name)
     log = redact_text(_tail(out or ""))
     ids = [line[len(IMAGE_PREFIX):].strip() for line in (out or "").splitlines() if line.startswith(IMAGE_PREFIX)]
+    if proc.returncode == INFRA_EXIT_CODE:
+        last = redact_text("\n".join((out or "").strip().splitlines()[-15:]))
+        raise R.InfraUnavailable(R.BUILD_INFRA_ERROR, f"Modal build infrastructure error: {last[-1500:]}")
     if proc.returncode != 0 or not ids:
         last = redact_text("\n".join((out or "").strip().splitlines()[-15:]))
         raise R.SolutionRejected(R.BUILD_FAILED, f"exit {proc.returncode}: {last[-1500:]}")
@@ -84,10 +92,16 @@ def _child(spec_path: str) -> int:
     spec = json.loads(Path(spec_path).read_text())
     code_dir, weights_dir = Path(spec["code_dir"]), Path(spec["weights_dir"])
     lock = (code_dir / "requirements.lock").read_text()
-    app = modal.App.lookup(spec["app_name"], create_if_missing=True, environment_name=spec["environment"])
-    image = solution_image(modal, code_dir, weights_dir, lock)
-    with modal.enable_output():
-        built = image.build(app)
+    try:
+        app = modal.App.lookup(spec["app_name"], create_if_missing=True, environment_name=spec["environment"])
+        image = solution_image(modal, code_dir, weights_dir, lock)
+        with modal.enable_output():
+            built = image.build(app)
+    except Exception as exc:
+        if type(exc).__name__ in _MODAL_INFRA_EXC or isinstance(exc, (ConnectionError, TimeoutError, OSError)):
+            print(f"modal infra error: {type(exc).__name__}: {exc}", flush=True)
+            return INFRA_EXIT_CODE
+        raise
     print(IMAGE_PREFIX + built.object_id, flush=True)
     return 0
 

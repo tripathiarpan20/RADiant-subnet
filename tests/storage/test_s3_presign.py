@@ -72,3 +72,16 @@ def test_presign_does_not_swallow_403_access_denied(moto_s3, monkeypatch):
         s3.presign_upload(s, campaign_id="testnet-cxr-01", hotkey=HOTKEY,
                           sha256="sha256:" + "a" * 64, size_bytes=10,
                           upload_id=str(uuid.uuid4()), expires_in=300)
+
+
+def test_head_size_returns_none_only_for_404_and_raises_on_503(moto_s3, monkeypatch):
+    s = _settings(moto_s3)
+    assert s3.head_size(s, "does/not/exist.zip") is None
+
+    class OutageClient:
+        def head_object(self, **kwargs):
+            raise ClientError({"Error": {"Code": "503", "Message": "SlowDown"}}, "HeadObject")
+
+    monkeypatch.setattr(s3, "client", lambda *a, **k: OutageClient())
+    with pytest.raises(ClientError):
+        s3.head_size(s, "any/key.zip")

@@ -179,3 +179,28 @@ def test_weights_repo_must_be_safetensors_only():
 
 def test_manifest_pins_weights_formats(manifest):
     assert manifest["gates"]["weights_formats"] == ["safetensors"]
+
+
+def test_hf_infra_classification_and_token_scopes(monkeypatch):
+    from radiant_sdk.validate import _is_hf_infra_error, token_write_scopes
+
+    class FakeResp:
+        def __init__(self, code):
+            self.status_code = code
+
+    class FakeErr(Exception):
+        def __init__(self, code):
+            self.response = FakeResp(code) if code is not None else None
+
+    assert _is_hf_infra_error(FakeErr(503)) and _is_hf_infra_error(FakeErr(429)) and _is_hf_infra_error(FakeErr(None))
+    assert not _is_hf_infra_error(FakeErr(404)) and not _is_hf_infra_error(FakeErr(401))
+
+    import huggingface_hub
+
+    monkeypatch.setattr(huggingface_hub.HfApi, "whoami",
+                        lambda self, token=None: {"auth": {"accessToken": {"role": "admin"}}})
+    assert token_write_scopes("hf_x") == ["admin (classic token)"]
+    monkeypatch.setattr(huggingface_hub.HfApi, "whoami",
+                        lambda self, token=None: {"auth": {"accessToken": {"role": "fineGrained", "fineGrained": {
+                            "scoped": [{"permissions": ["repo.content.read"]}], "global": []}}}})
+    assert token_write_scopes("hf_x") == []

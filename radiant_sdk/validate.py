@@ -92,16 +92,26 @@ def fetch_campaign(campaign_id: str, *, api_url: str | None = None, manifest_fil
 # ── Hugging Face (g5) ───────────────────────────────────────────────────────
 
 
+_UNSAFE_HF_PERM_WORDS = ("write", "admin", "manage", "delete", "create", "billing")
+
+
+def _is_hf_infra_error(exc: Exception) -> bool:
+    resp = getattr(exc, "response", None)
+    status = getattr(resp, "status_code", None)
+    return status is None or status == 429 or status >= 500
+
+
 def token_write_scopes(token: str) -> list[str]:
-    """Write permissions a Hugging Face token carries ([] for a read-only or fine-grained read token)."""
+    """Non-read permissions a Hugging Face token carries ([] for a read-only or fine-grained read token)."""
     from huggingface_hub import HfApi
 
     auth = (HfApi().whoami(token=token).get("auth") or {}).get("accessToken") or {}
-    if auth.get("role") == "write":
-        return ["write (classic token)"]
+    role = auth.get("role")
+    if role and role not in ("read", "fineGrained"):
+        return [f"{role} (classic token)"]
     fine = auth.get("fineGrained") or {}
-    return sorted({p for scope in fine.get("scoped", []) for p in scope.get("permissions", []) if "write" in p}
-                  | {p for p in fine.get("global", []) if "write" in p})
+    all_perms = [p for scope in fine.get("scoped", []) for p in scope.get("permissions", [])] + list(fine.get("global", []))
+    return sorted({p for p in all_perms if any(w in p.lower() for w in _UNSAFE_HF_PERM_WORDS)})
 
 
 def fetch_weights(env: dict[str, str], max_weights_mb: int, cache: Path,
@@ -115,6 +125,8 @@ def fetch_weights(env: dict[str, str], max_weights_mb: int, cache: Path,
         try:
             writes = token_write_scopes(token)
         except HfHubHTTPError as exc:
+            if _is_hf_infra_error(exc):
+                raise R.InfraUnavailable(R.HF_INFRA_ERROR, f"Hugging Face unavailable: {str(exc).splitlines()[0]}") from None
             raise R.SolutionRejected(R.HF_UNREACHABLE, f"HF_TOKEN rejected: {str(exc).splitlines()[0]}") from None
         if writes:
             raise R.SolutionRejected(R.HF_TOKEN_WRITE_SCOPE,
@@ -123,15 +135,33 @@ def fetch_weights(env: dict[str, str], max_weights_mb: int, cache: Path,
     try:
         info = HfApi().model_info(repo, revision=revision, files_metadata=True, token=token)
     except HfHubHTTPError as exc:
+        if _is_hf_infra_error(exc):
+            raise R.InfraUnavailable(R.HF_INFRA_ERROR, f"Hugging Face unavailable: {str(exc).splitlines()[0]}") from None
         raise R.SolutionRejected(R.HF_UNREACHABLE, f"{repo}@{revision}: {str(exc).splitlines()[0]}") from None
     if info.sha != revision:
         raise R.SolutionRejected(R.HF_REVISION_MISMATCH, f"{revision} resolved to {info.sha}")
     check_weight_files([s.rfilename for s in info.siblings], formats or ["safetensors"])
+    cap_bytes = max_weights_mb * 1_000_000
     total = sum(s.size or 0 for s in info.siblings)
-    if total > max_weights_mb * 1_000_000:
+    if total > cap_bytes:
         raise R.SolutionRejected(R.HF_WEIGHTS_TOO_LARGE, f"{total / 1e6:.0f} MB, over {max_weights_mb} MB")
     target = cache / repo.replace("/", "--") / revision
-    snapshot_download(repo, revision=revision, token=token, local_dir=target)
+    try:
+        snapshot_download(repo, revision=revision, token=token, local_dir=target)
+    except HfHubHTTPError as exc:
+        if _is_hf_infra_error(exc):
+            raise R.InfraUnavailable(R.HF_INFRA_ERROR, f"Hugging Face download failed: {str(exc).splitlines()[0]}") from None
+        raise R.SolutionRejected(R.HF_UNREACHABLE, f"{repo}@{revision}: {str(exc).splitlines()[0]}") from None
+    shutil.rmtree(target / ".cache", ignore_errors=True)
+    # Verify actual on-disk size and refuse symlinks (never trust HF metadata alone).
+    actual_bytes = 0
+    for p in sorted(target.rglob("*")):
+        if p.is_symlink():
+            raise R.SolutionRejected(R.HF_WEIGHTS_FORMAT, f"symlink in weights repo: {p.relative_to(target)}")
+        if p.is_file():
+            actual_bytes += p.stat().st_size
+    if actual_bytes > cap_bytes:
+        raise R.SolutionRejected(R.HF_WEIGHTS_TOO_LARGE, f"{actual_bytes / 1e6:.0f} MB on disk, over {max_weights_mb} MB")
     bad = []
     for s in info.siblings:
         if s.lfs:
@@ -143,8 +173,7 @@ def fetch_weights(env: dict[str, str], max_weights_mb: int, cache: Path,
                 bad.append(s.rfilename)
     if bad:
         raise R.SolutionRejected(R.HF_HASH_MISMATCH, ", ".join(bad))
-    shutil.rmtree(target / ".cache", ignore_errors=True)
-    return target, {"repo": repo, "revision": revision, "bytes": total, "files": len(info.siblings)}
+    return target, {"repo": repo, "revision": revision, "bytes": actual_bytes, "files": len(info.siblings)}
 
 
 # ── Modal (g7, g8) ──────────────────────────────────────────────────────────

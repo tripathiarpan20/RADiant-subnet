@@ -73,3 +73,15 @@ def test_build_image_kills_timed_out_child_and_redacts_failure(tmp_path, monkeyp
     built = build_image(tmp_path, tmp_path, timeout_s=10)
     assert built.image_id == "im-abc123" and "step 1" in built.log
     assert _tail("x" * 250_000).startswith("[earlier output trimmed]\n")
+
+    from build.modal_image import INFRA_EXIT_CODE
+
+    def infra_popen(cmd, **kwargs):
+        return real_popen(
+            [sys.executable, "-c", f"print('modal 503'); raise SystemExit({INFRA_EXIT_CODE})"],
+            stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, start_new_session=True)
+
+    monkeypatch.setattr(subprocess, "Popen", infra_popen)
+    with pytest.raises(R.InfraUnavailable) as exc3:
+        build_image(tmp_path, tmp_path, timeout_s=10)
+    assert exc3.value.code == R.BUILD_INFRA_ERROR

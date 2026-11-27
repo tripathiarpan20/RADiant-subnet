@@ -95,8 +95,10 @@ def head_size(s: config.Settings, key: str) -> int | None:
 
     try:
         return int(client(s, timeout_s=15).head_object(Bucket=s.s3_bucket, Key=key)["ContentLength"])
-    except ClientError:
-        return None
+    except ClientError as exc:
+        if exc.response.get("Error", {}).get("Code") in ("404", "NoSuchKey", "NotFound"):
+            return None
+        raise
 
 
 def fetch_bounded(s: config.Settings, key: str, max_bytes: int) -> bytes:
