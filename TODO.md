@@ -39,7 +39,7 @@ Every phase keeps this current. Anything deferred to launch goes here.
 
 ## Found in the 27 Nov review of R0 to R2
 
-- [ ] Publish the safetensors reference weights (`scripts/publish_reference_weights.py --repo <RADiant HF org>/densenet121-res224-all-safetensors`) and pin the printed commit in `radiant_sdk/reference_miner/.env.template`. Until then the reference miner's full `validate` stops at `HF_WEIGHTS_FORMAT`; `--static-only` passes.
+- [x] Safetensors reference weights published at `tripathiarpan20/densenet121-res224-all-safetensors@66fd21c9` and pinned in the reference miner. Move them to a RADiant org if one is created.
 - [ ] R3: a public API domain behind Caddy for miners on other machines.
 - [ ] R3: point the app's `RADIANT_S3_*` at whichever store the storage probe passes (Hippius or MinIO); the R0 probe uses `R0_HIPPIUS_S3_*`.
 - [ ] R7: `radiant-sdk prepare --from <hash>` to fork a revealed solution.
@@ -49,7 +49,7 @@ Every phase keeps this current. Anything deferred to launch goes here.
 
 ## Carried from R3
 
-- [ ] Run `scripts/r3_exit_gate.sh` on testnet once the safetensors reference weights are published (needs the coldkey password).
+- [ ] Run `scripts/r3_exit_gate.sh` on testnet (needs the `bruh_dev_coldkey` password).
 - [x] Hippius storage probe passed on 27 Nov (checksum and If-None-Match enforced).
-- [ ] Switch the app's `RADIANT_S3_*` in `.env` to the Hippius bucket (awaiting Arpan's OK).
+- [x] The app's `RADIANT_S3_*` in the local `.env` point at the Hippius bucket.
 - [ ] Set `TRUSTED_FEE_RECIPIENTS["finney"]` in `radiant_sdk/submit.py` to the mainnet owner coldkey before launch.
