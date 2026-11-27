@@ -5,6 +5,12 @@
 !.env.example
 **/__pycache__
 .pytest_cache
+*.egg-info
+.r0_scratch
+my-miner
+**/solution.zip
+**/prepare.json
+**/receipt.json
 docs
 tests
 scripts/r0
