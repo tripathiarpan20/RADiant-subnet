@@ -1,0 +1,125 @@
+# RADiant owner-validator stack (R1).
+#
+#   cp .env.example .env   # then set the passwords
+#   docker compose up -d --build
+#
+# postgres  official image; never published to the host
+# minio     local S3-compatible store for solution zips (see docs/implementation/R1.md
+#           for why this is Chainguard's MinIO build, pinned by digest)
+# init      one-off: migrations, read-only role, bucket, campaign seed
+# api       FastAPI behind Caddy
+# caddy     the only service meant to face the internet
+# adminer   database browser, bound to localhost; log in as the read-only role
+name: radiant
+
+# One image for every app service. Only init declares the build, so
+# `up --build` builds it once; the others reuse it and never pull it.
+x-app: &app
+  image: radiant-validator:dev
+  pull_policy: never
+  restart: unless-stopped
+
+services:
+  postgres:
+    image: postgres:17.12-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: radiant
+      POSTGRES_USER: radiant
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U radiant -d radiant"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  minio:
+    image: cgr.dev/chainguard/minio@sha256:b288eaa709ba2f799a39e9a8ceda71a08fabf90109b12c90badba9afff29485c
+    restart: unless-stopped
+    command: ["server", "/data", "--console-address", ":9001"]
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:?set MINIO_ROOT_USER in .env}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?set MINIO_ROOT_PASSWORD in .env}
+    volumes:
+      - miniodata:/data
+    ports:
+      - "${RADIANT_MINIO_BIND:-127.0.0.1}:9000:9000"   # S3 API (R3 puts it behind Caddy for miners)
+      - "127.0.0.1:9001:9001"                         # console, localhost only
+
+  init:
+    <<: *app
+    build: .
+    pull_policy: build
+    restart: "no"
+    command: >-
+      sh -c "python -m db.migrate &&
+             python -m storage.bucket &&
+             if [ -n \"$$RADIANT_SEED_MANIFEST\" ]; then python -m campaign.seed --manifest \"$$RADIANT_SEED_MANIFEST\"; fi"
+    environment: &app_env
+      RADIANT_NETWORK: ${RADIANT_NETWORK:-test}
+      RADIANT_NETUID: ${RADIANT_NETUID:-0}
+      RADIANT_DATABASE_URL: postgresql://radiant:${POSTGRES_PASSWORD}@postgres:5432/radiant
+      RADIANT_DB_READONLY_ROLE: ${RADIANT_DB_READONLY_ROLE:-radiant_readonly}
+      RADIANT_DB_READONLY_PASSWORD: ${RADIANT_DB_READONLY_PASSWORD:?set RADIANT_DB_READONLY_PASSWORD in .env}
+      RADIANT_S3_ENDPOINT_URL: ${RADIANT_S3_ENDPOINT_URL:-http://minio:9000}
+      RADIANT_S3_REGION: ${RADIANT_S3_REGION:-us-east-1}
+      RADIANT_S3_BUCKET: ${RADIANT_S3_BUCKET:-radiant-solutions}
+      RADIANT_S3_ACCESS_KEY: ${RADIANT_S3_ACCESS_KEY:-${MINIO_ROOT_USER}}
+      RADIANT_S3_SECRET_KEY: ${RADIANT_S3_SECRET_KEY:-${MINIO_ROOT_PASSWORD}}
+      RADIANT_SEED_MANIFEST: ${RADIANT_SEED_MANIFEST-campaign/fixtures/testnet-cxr-01.json}
+      RADIANT_FEE_RECIPIENT: ${RADIANT_FEE_RECIPIENT:-}
+      RADIANT_FEE_TAO: ${RADIANT_FEE_TAO:-}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      minio:
+        condition: service_started
+
+  api:
+    <<: *app
+    command: ["python", "-m", "api"]
+    environment:
+      RADIANT_NETWORK: ${RADIANT_NETWORK:-test}
+      RADIANT_DATABASE_URL: postgresql://radiant:${POSTGRES_PASSWORD}@postgres:5432/radiant
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=3)"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    depends_on:
+      init:
+        condition: service_completed_successfully
+
+  caddy:
+    image: caddy:2.11.9-alpine
+    restart: unless-stopped
+    environment:
+      RADIANT_API_SITE: ${RADIANT_API_SITE:-:80}
+    ports:
+      - "${RADIANT_HTTP_BIND:-127.0.0.1:8080}:80"
+      - "${RADIANT_HTTPS_BIND:-127.0.0.1:8443}:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      api:
+        condition: service_healthy
+
+  adminer:
+    image: adminer:6.3.1
+    restart: unless-stopped
+    environment:
+      ADMINER_DEFAULT_SERVER: postgres
+    ports:
+      - "127.0.0.1:8081:8080"   # never route through Caddy; reach it over SSH
+    depends_on:
+      - postgres
+
+volumes:
+  pgdata:
+  miniodata:
+  caddy_data:
+  caddy_config:

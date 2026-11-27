@@ -45,9 +45,21 @@ def ensure_bucket(s: config.Settings) -> bool:
     return True
 
 
-def main() -> int:
+def main(wait_s: float = 60.0) -> int:
+    """Retry while the store is still starting (compose starts MinIO alongside us)."""
+    import time
+
     s = config.settings()
-    created = ensure_bucket(s)
+    deadline = time.monotonic() + wait_s
+    while True:
+        try:
+            created = ensure_bucket(s)
+            break
+        except Exception as exc:  # connection refused, 503 while MinIO initialises
+            if time.monotonic() > deadline:
+                print(f"bucket: {type(exc).__name__}: {exc}", file=sys.stderr)
+                return 1
+            time.sleep(1)
     print(f"bucket {s.s3_bucket} {'created' if created else 'exists'} at {s.s3_endpoint_url}")
     return 0
 
