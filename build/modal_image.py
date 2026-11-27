@@ -22,9 +22,21 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from radiant_sdk import reasons as R
+from radiant_sdk.redact import redact_text
 
 IMAGE_PREFIX = "RADIANT_IMAGE_ID "
 MAX_LOG_BYTES = 200_000
+_CHILD_ENV_ALLOW = frozenset({
+    "PATH", "HOME", "USER", "TMPDIR", "TEMP", "TMP", "LANG", "LC_ALL", "PYTHONPATH",
+    "MODAL_TOKEN_ID", "MODAL_TOKEN_SECRET", "MODAL_PROFILE", "MODAL_ENVIRONMENT", "MODAL_CONFIG_PATH",
+    "SSL_CERT_FILE", "REQUESTS_CA_BUNDLE", "HTTPS_PROXY", "HTTP_PROXY", "NO_PROXY",
+})
+
+
+def _child_env(environ: dict[str, str] | None = None) -> dict[str, str]:
+    """Minimal environment for the build child: Modal + system vars only, no DB/S3/HF secrets."""
+    src = os.environ if environ is None else environ
+    return {k: v for k, v in src.items() if k in _CHILD_ENV_ALLOW}
 
 
 @dataclass(frozen=True)
@@ -47,7 +59,7 @@ def build_image(code_dir: Path, weights_dir: Path, timeout_s: float, *, app_name
     t0 = time.monotonic()
     proc = subprocess.Popen([sys.executable, "-m", "build.modal_image", f.name], stdout=subprocess.PIPE,
                             stderr=subprocess.STDOUT, text=True, start_new_session=True,
-                            cwd=str(Path(__file__).resolve().parents[1]))
+                            env=_child_env(), cwd=str(Path(__file__).resolve().parents[1]))
     try:
         out, _ = proc.communicate(timeout=timeout_s)
     except subprocess.TimeoutExpired:
@@ -56,10 +68,10 @@ def build_image(code_dir: Path, weights_dir: Path, timeout_s: float, *, app_name
         raise R.SolutionRejected(R.BUILD_TIMEOUT, f"image build exceeded {timeout_s:.0f}s") from None
     finally:
         os.unlink(f.name)
-    log = _tail(out or "")
+    log = redact_text(_tail(out or ""))
     ids = [line[len(IMAGE_PREFIX):].strip() for line in (out or "").splitlines() if line.startswith(IMAGE_PREFIX)]
     if proc.returncode != 0 or not ids:
-        last = "\n".join((out or "").strip().splitlines()[-15:])
+        last = redact_text("\n".join((out or "").strip().splitlines()[-15:]))
         raise R.SolutionRejected(R.BUILD_FAILED, f"exit {proc.returncode}: {last[-1500:]}")
     return Built(ids[-1], log, time.monotonic() - t0)
 

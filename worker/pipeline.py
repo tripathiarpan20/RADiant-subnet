@@ -34,6 +34,7 @@ import config
 from campaign import store
 from radiant_sdk import reasons as R
 from radiant_sdk.checks import code_sha256, read_zip, run_static_checks
+from radiant_sdk.redact import redact_text
 
 logger = logging.getLogger("radiant.pipeline")
 
@@ -92,7 +93,7 @@ def update(conn, sub_id: int, **cols: Any) -> None:
 def save_log(conn, sub_id: int, kind: str, body: str) -> None:
     conn.execute("""INSERT INTO submission_logs (submission_id, kind, body) VALUES (%s, %s, %s)
                     ON CONFLICT (submission_id, kind) DO UPDATE SET body = EXCLUDED.body, created_at = now()""",
-                 (sub_id, kind, body[-200_000:]))
+                 (sub_id, kind, redact_text(body)[-200_000:]))
 
 
 def stripped_zip(files: dict[str, bytes]) -> bytes:
@@ -292,8 +293,9 @@ def process(conn, sub: dict, deps: Deps, s: config.Settings) -> str:
 
 
 def _settle_rejection(conn, run: Run, deps: Deps, state: str, code: str, detail: str) -> None:
-    update(conn, run.sub["id"], state=state, reason_code=code, reason_detail=detail[:2000], lease_until=None)
-    event(conn, run, state, reason_code=code, detail=detail[:500])
+    clean = redact_text(detail)
+    update(conn, run.sub["id"], state=state, reason_code=code, reason_detail=clean[:2000], lease_until=None)
+    event(conn, run, state, reason_code=code, detail=clean[:500])
     try:  # the miner's HF token must not stay in the bucket
         if run.files is not None:
             strip_stored_zip(conn, run, deps)
@@ -304,20 +306,21 @@ def _settle_rejection(conn, run: Run, deps: Deps, state: str, code: str, detail:
 
 
 def _settle_infra(conn, run: Run, code: str, detail: str) -> str:
+    clean = redact_text(detail)
     if code == "METAGRAPH_UNSYNCED":  # not a failure of this submission at all: just put it back
         update(conn, run.sub["id"], state="pending", lease_until=None)
         return "pending"
     failures = run.sub["infra_failures"] + 1
     if failures <= 1:
         update(conn, run.sub["id"], state="pending", infra_failures=failures, lease_until=None, reason_code=code,
-               reason_detail=detail[:2000])
+               reason_detail=clean[:2000])
         conn.execute("UPDATE submissions SET next_attempt_at = now() + make_interval(secs => %s) WHERE id = %s",
                      (s_retry_after(), run.sub["id"]))
-        event(conn, run, "infra_failed", reason_code=code, detail=detail[:500], requeued=True)
+        event(conn, run, "infra_failed", reason_code=code, detail=clean[:500], requeued=True)
         return "pending"
     update(conn, run.sub["id"], state="infra_failed", infra_failures=failures, lease_until=None, reason_code=code,
-           reason_detail=detail[:2000])
-    event(conn, run, "infra_failed", reason_code=code, detail=detail[:500], requeued=False)
+           reason_detail=clean[:2000])
+    event(conn, run, "infra_failed", reason_code=code, detail=clean[:500], requeued=False)
     return "infra_failed"
 
 
