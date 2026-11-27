@@ -50,5 +50,6 @@ Every phase keeps this current. Anything deferred to launch goes here.
 ## Carried from R3
 
 - [ ] Run `scripts/r3_exit_gate.sh` on testnet once the safetensors reference weights are published (needs the coldkey password).
-- [ ] Hippius: bucket name for `R0_HIPPIUS_S3_BUCKET`, then `python -m scripts.r0 storage --providers hippius`; switch `RADIANT_S3_*` to Hippius if checksum and If-None-Match are enforced.
+- [x] Hippius storage probe passed on 27 Nov (checksum and If-None-Match enforced).
+- [ ] Switch the app's `RADIANT_S3_*` in `.env` to the Hippius bucket (awaiting Arpan's OK).
 - [ ] Set `TRUSTED_FEE_RECIPIENTS["finney"]` in `radiant_sdk/submit.py` to the mainnet owner coldkey before launch.

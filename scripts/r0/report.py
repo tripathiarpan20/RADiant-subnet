@@ -60,7 +60,9 @@ def exit_gate_met(results: Iterable[GateResult]) -> bool:
 # Anything that looks like a credential is scrubbed before a result is written.
 _SECRET_KEY = re.compile(r"(token|secret|password|api[_-]?key|authorization|signature)", re.I)
 _SECRET_VALUE = re.compile(
-    r"(hf_[A-Za-z0-9]{20,}|X-Amz-Signature=[0-9a-f]+|X-Amz-Credential=[^&\s]+|ak-[A-Za-z0-9]{10,}|as-[A-Za-z0-9]{10,})"
+    r"(hf_[A-Za-z0-9]{20,}|hip_[A-Za-z0-9]{8,}|X-Amz-Signature=[0-9a-f]+|X-Amz-Credential=[^&\s]+"
+    r"|ak-[A-Za-z0-9]{10,}|as-[A-Za-z0-9]{10,}|AKIA[A-Z0-9]{12,}"
+    r"|(?<=<AWSAccessKeyId>)[^<]+|(?<=<StringToSign>)[^<]+|(?<=<CanonicalRequest>)[^<]+)"
 )
 
 

@@ -43,3 +43,12 @@ def test_merge_keeps_gates_a_partial_rerun_did_not_produce(tmp_path):
                   out_dir=tmp_path)
     merged = merge_previous("m", [GateResult("b", GateStatus.PASSED, "new b")], out_dir=tmp_path)
     assert [(r.gate, r.summary) for r in merged] == [("a", "old a"), ("b", "new b")]
+
+
+def test_s3_error_bodies_lose_access_keys(tmp_path):
+    body = ("<Error><Code>SignatureDoesNotMatch</Code><AWSAccessKeyId>hip_abcdefghij1234</AWSAccessKeyId>"
+            "<StringToSign>AWS4-HMAC-SHA256\n20261127T000000Z</StringToSign></Error>")
+    text = write_results("e", [GateResult("g", GateStatus.FAILED, "s", {"missing_header_body": body})],
+                         out_dir=tmp_path).read_text()
+    assert "hip_abcdefghij1234" not in text and "AWS4-HMAC-SHA256\\n2026" not in text
+    assert "SignatureDoesNotMatch" in text
