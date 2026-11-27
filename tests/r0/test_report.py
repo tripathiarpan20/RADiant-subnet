@@ -1,0 +1,36 @@
+import json
+
+from scripts.r0.report import GateResult, GateStatus, exit_gate_met, write_results
+
+
+def test_exit_gate_needs_every_gate_passed_or_accepted():
+    ok = GateResult("a", GateStatus.PASSED, "")
+    acc = GateResult("b", GateStatus.ACCEPTED, "")
+    pend = GateResult("c", GateStatus.PENDING, "")
+    assert exit_gate_met([ok, acc])
+    assert not exit_gate_met([ok, pend])
+    assert not exit_gate_met([GateResult("d", GateStatus.BLOCKED, "")])
+
+
+def test_secrets_are_redacted_by_key_and_by_value(tmp_path):
+    r = GateResult(
+        "g",
+        GateStatus.PASSED,
+        "s",
+        {
+            "hf_token": "hf_abcdefghijklmnopqrstuvwxyz",
+            "token_present": True,
+            "url": "https://x/b/k?X-Amz-Credential=AKIA/2026&X-Amz-Signature=deadbeef",
+            "nested": [{"api_key": "abc"}, "uses hf_abcdefghijklmnopqrstuvwxyz0 here"],
+        },
+    )
+    path = write_results("t", [r], out_dir=tmp_path)
+    text = path.read_text()
+    assert "hf_abcdefghijklmnopqrstuvwxyz" not in text
+    assert "deadbeef" not in text and "AKIA" not in text
+    doc = json.loads(text)
+    d = doc["gates"][0]["details"]
+    assert d["hf_token"] == "[REDACTED]"
+    assert d["token_present"] is True
+    assert d["nested"][0]["api_key"] == "[REDACTED]"
+    assert doc["exit_gate_met"] is True
