@@ -1,4 +1,0 @@
-# The reference miner's extra dependencies. Base image packages
-# (radiant_sdk/base_image/requirements.txt) are left out of the lock and
-# installed from the base image. Regenerate with scripts/lock_reference_miner.sh.
-torchxrayvision==1.5.7
