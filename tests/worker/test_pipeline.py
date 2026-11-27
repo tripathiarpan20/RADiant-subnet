@@ -218,6 +218,23 @@ def test_malicious_fixtures_fail_with_stable_codes_and_leave_no_pin(env, tmp_pat
         assert ".env" not in read_zip(fakes.bucket[r["stripped_object_key"]], max_zip_mb=10, max_unzipped_mb=50)
 
 
+def test_code_sha256_mismatch_deletes_the_zip_with_env(env, tmp_path):
+    # Intake no longer inflates zips, so a wrong code_sha256 is first caught at g1.
+    # Such a zip cannot be stripped and verified, so it must not stay in the bucket.
+    s, fakes = env
+    data = deterministic_zip(reference_files(tmp_path))
+    key = f"radiant/private/campaigns/testnet-cxr-01/solutions/{HOTKEY}/{uuid.uuid4()}.zip"
+    fakes.bucket[key] = data
+    com = SolutionCommitment(uid=44, hotkey=HOTKEY, coldkey="5Cold", commit_block=105, campaign_id="testnet-cxr-01",
+                             sha256="sha256:" + hashlib.sha256(data).hexdigest(), code_sha256="sha256:" + "1" * 64,
+                             object_key=key, raw=f"test-{uuid.uuid4()}", payment_block=104, payment_tx=7)
+    with connect(s.database_url) as conn:
+        sid = store.insert_submission(conn, com, size_bytes=len(data), fee_exempt=False)
+    assert run_all(s, fakes) == {sid: "rejected"}
+    assert row(s, sid)["reason_code"] == R.CODE_SHA256_MISMATCH
+    assert key not in fakes.bucket and not fakes.bucket
+
+
 # ── identity, duplicates, infrastructure ───────────────────────────────────
 
 def test_unregistered_and_disqualified_hotkeys_are_rejected_at_g0(env, tmp_path):

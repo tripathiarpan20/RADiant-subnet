@@ -76,3 +76,10 @@ Every phase keeps this current. Anything deferred to launch goes here.
 - [ ] Run the HF private-download path against a private test repo with a fine-grained read token (the reference weights are public).
 - [x] `radiant-bittensor` has 100 GB of private storage on the free plan (0 used on 27 Nov). Pins move to public storage on reveal, so only unrevealed pins count. Watch it if campaigns allow large weights (cap 2 GB each).
 - [x] `MODAL_TOKEN_ID`/`MODAL_TOKEN_SECRET` set in `.env` (token "radiant", workspace tripathiarpan20).
+
+## Found in the 27 Nov review of the C1–C5 / H1–H7 hardening commits
+
+- [x] A zip whose code does not hash to its commitment is deleted on rejection (intake no longer inflates zips, so these reach g1 with `.env` still inside).
+- [ ] R6: compute round scores on the validator from the raw predictions. The harness's protocol token is readable by in-process miner code (`/proc/self/cmdline`, module globals), so a verdict or marker printed inside the sandbox is a hint, never evidence. g8 qualification is a smoke test and accepts this.
+- [ ] R8: clean up worker scratch for submissions left in terminal `infra_failed` (kept so `worker.admin requeue` can resume without the miner's HF token; it can hold the original zip and weights) after a retention window.
+- [ ] Before outside miners join: say in docs/miners.md that the lock installs wheels only (`--only-binary=:all:`), so sdist-only dependencies are refused.

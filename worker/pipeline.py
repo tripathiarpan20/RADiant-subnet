@@ -387,7 +387,9 @@ def _settle_rejection(conn, run: Run, deps: Deps, state: str, code: str, detail:
                lease_until=None, next_attempt_at=None)
         event(conn, run, state, reason_code=code, detail=clean[:500])
     try:  # the miner's HF token must not stay in the bucket
-        if run.files is not None:
+        # A zip whose code does not hash to its commitment cannot be stripped and
+        # verified (intake no longer inflates zips, so this lands here): delete it.
+        if run.files is not None and code != R.CODE_SHA256_MISMATCH:
             strip_stored_zip(conn, run, deps)
         elif deps.head_size(run.sub["object_key"]) is not None:
             deps.delete(run.sub["object_key"])
