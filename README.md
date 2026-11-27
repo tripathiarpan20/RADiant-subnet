@@ -15,10 +15,22 @@ report in `docs/implementation/R<n>.md`, and `TODO.md` is the launch checklist.
 
 - **R0 Feasibility**: complete (27 Nov 2026). Probes in `scripts/r0/`, report in
   [docs/implementation/R0.md](docs/implementation/R0.md).
+- **R1 Foundations**: complete (27 Nov 2026). Campaign manifests, Postgres schema,
+  seed CLI and the docker-compose stack; report in
+  [docs/implementation/R1.md](docs/implementation/R1.md).
+
+## Running the validator stack
+
+```bash
+cp .env.example .env    # set the passwords
+docker compose up -d --build
+curl -s 'localhost:8080/v1/campaigns?include_drafts=1'
+```
 
 ## Development
 
 ```bash
-uv sync --python 3.12 --extra r0 --extra dev
-uv run pytest
+uv sync --python 3.12 --extra validator --extra r0 --extra dev
+uv run pytest                 # database tests start a throwaway Postgres container
+scripts/r1_exit_gate.sh       # fresh stack, seed, rerun, restart, compare hashes
 ```
