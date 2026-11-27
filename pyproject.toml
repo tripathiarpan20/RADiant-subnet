@@ -1,0 +1,35 @@
+[project]
+name = "radiant-subnet"
+version = "0.0.1"
+description = "RADiant: a campaign-based Bittensor subnet for chest X-ray classifiers"
+readme = "README.md"
+requires-python = ">=3.12"
+license = { text = "MIT" }
+dependencies = []
+
+[project.optional-dependencies]
+# R0 feasibility probes. Each probe imports only what it needs, so a missing
+# extra blocks that one gate instead of the whole run.
+r0 = [
+    "boto3>=1.35",
+    "requests>=2.32",
+    "modal>=1.4",
+    "huggingface_hub>=0.26",
+    "numpy>=1.26",
+    "pillow>=10.4",
+]
+r0-models = [
+    "torch>=2.4",
+    "torchvision>=0.19",
+    "torchxrayvision>=1.3",
+    "scikit-learn>=1.5",
+]
+dev = ["pytest>=8.3"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+
+[tool.uv]
+# Not installable yet; R1 turns the repo into packages.
+package = false
