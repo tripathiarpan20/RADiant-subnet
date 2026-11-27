@@ -13,7 +13,7 @@ report in `docs/implementation/R<n>.md`, and `TODO.md` is the launch checklist.
 
 ## Status
 
-- **R0 Feasibility**: probes in `scripts/r0/`, report in
+- **R0 Feasibility**: complete (27 Nov 2026). Probes in `scripts/r0/`, report in
   [docs/implementation/R0.md](docs/implementation/R0.md).
 
 ## Development
