@@ -2,9 +2,11 @@
 
 1. The receipt must match this zip, the campaign's current manifest and the
    SDK version, and be under 24 hours old (checked before anything else).
-2. The validator's /v1/info must report the network and netuid in miner.env,
-   and the campaign's fee recipient must be the one pinned in this SDK for
-   that network, so a wrong RADIANT_API_URL can't redirect a payment.
+2. The validator's /v1/info must report the network and netuid in miner.env.
+   The fee recipient comes from the campaign (each campaign sets its own),
+   and must be one this miner trusts for that network: the SDK's pinned
+   owner addresses, plus any listed in RADIANT_TRUSTED_FEE_RECIPIENTS in
+   miner.env. A wrong or compromised RADIANT_API_URL can't redirect a payment.
 3. The hotkey must be registered on the subnet.
 4. Upload: sign the upload request with the hotkey, get a presigned PUT,
    PUT the zip with its checksum and If-None-Match. No money has moved yet.
@@ -31,12 +33,22 @@ from typing import Any
 
 from .validate import _check_url, check_receipt, fetch_campaign
 
-# Fee recipients this SDK will pay, per network. A campaign naming anyone
-# else is refused. Mainnet's is set at launch (TODO.md).
-TRUSTED_FEE_RECIPIENTS = {
-    "test": "5GYfPfFRQPaLytjCyT78X769ZU9xm5tL43dN11sknTiZx34a",  # owner coldkey (rumayao_coldkey), 27 Nov
-    "finney": None,
+# Owner addresses this SDK trusts as fee recipients, per network. A campaign
+# sets its own recipient in its manifest (submission_fee.recipient, outside
+# the hash, with block-effective history); the SDK pays it only if it is
+# trusted here or in the miner's RADIANT_TRUSTED_FEE_RECIPIENTS. Mainnet's
+# owner address is added at launch (TODO.md).
+TRUSTED_FEE_RECIPIENTS: dict[str, frozenset[str]] = {
+    "test": frozenset({"5GYfPfFRQPaLytjCyT78X769ZU9xm5tL43dN11sknTiZx34a"}),  # owner coldkey (rumayao_coldkey)
+    "finney": frozenset(),
 }
+
+
+def trusted_recipients(network: str, env: dict[str, str] | None = None) -> frozenset[str]:
+    extra = (env if env is not None else os.environ).get("RADIANT_TRUSTED_FEE_RECIPIENTS", "")
+    return TRUSTED_FEE_RECIPIENTS.get(network, frozenset()) | {a.strip() for a in extra.split(",") if a.strip()}
+
+
 RAO_PER_TAO = Decimal(1_000_000_000)
 
 
@@ -85,10 +97,10 @@ def submit(zip_path: Path, campaign_id: str, *, api_url: str | None, network: st
         raise ValueError(f"validator runs {info['network']}/{info['netuid']} but miner.env says {network}/{netuid}; "
                          "refusing to pay on the wrong chain")
     fee = campaign["submission_fee"]
-    trusted = TRUSTED_FEE_RECIPIENTS.get(network)
-    if trusted is None or fee["recipient"] != trusted:
-        raise ValueError(f"campaign fee recipient {fee['recipient']} is not the one this SDK trusts on {network} "
-                         f"({trusted}); refusing to pay")
+    if fee["recipient"] not in trusted_recipients(network):
+        raise ValueError(f"campaign {campaign_id} wants its fee paid to {fee['recipient']}, which you don't trust on "
+                         f"{network}. If that is the subnet owner's address, add it to RADIANT_TRUSTED_FEE_RECIPIENTS "
+                         "in miner.env; otherwise don't pay")
     fee_rao = int(Decimal(fee["amount_tao"]) * RAO_PER_TAO)
     if max_fee_tao is not None and fee_rao > int(Decimal(max_fee_tao) * RAO_PER_TAO) and payment_block is None:
         raise ValueError(f"campaign fee {fee['amount_tao']} is above --max-fee-tao {max_fee_tao}")

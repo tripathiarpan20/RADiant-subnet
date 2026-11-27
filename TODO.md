@@ -52,4 +52,4 @@ Every phase keeps this current. Anything deferred to launch goes here.
 - [ ] Run `scripts/r3_exit_gate.sh` on testnet (needs the `bruh_dev_coldkey` password).
 - [x] Hippius storage probe passed on 27 Nov (checksum and If-None-Match enforced).
 - [x] The app's `RADIANT_S3_*` in the local `.env` point at the Hippius bucket.
-- [ ] Set `TRUSTED_FEE_RECIPIENTS["finney"]` in `radiant_sdk/submit.py` to the mainnet owner coldkey before launch.
+- [ ] Add the mainnet owner coldkey to `TRUSTED_FEE_RECIPIENTS["finney"]` in `radiant_sdk/submit.py` before launch, and set it as `submission_fee.recipient` in each mainnet campaign manifest.

@@ -151,3 +151,12 @@ def test_validate_explains_missing_modal_credentials(monkeypatch):
     monkeypatch.setattr(config, "get", lambda key, *a, **k: None)
     with pytest.raises(ValueError, match="modal setup"):
         v.require_modal_credentials()
+
+
+def test_fee_recipient_trust_is_per_network_plus_miner_allowlist():
+    from radiant_sdk.submit import trusted_recipients
+
+    owner = "5GYfPfFRQPaLytjCyT78X769ZU9xm5tL43dN11sknTiZx34a"
+    assert owner in trusted_recipients("test", env={})
+    assert owner not in trusted_recipients("finney", env={})
+    assert "5Other" in trusted_recipients("finney", env={"RADIANT_TRUSTED_FEE_RECIPIENTS": "5Other, 5More"})

@@ -51,7 +51,9 @@ radiant-sdk status sha256:<zip hash>
 ```
 
 `submit` refuses to pay if the validator reports a different network or
-netuid, or if the campaign's fee recipient isn't the one pinned in the SDK.
+netuid. It also refuses if the campaign's fee recipient is neither one of the
+owner addresses pinned in the SDK nor listed in your
+`RADIANT_TRUSTED_FEE_RECIPIENTS`.
 It asks before paying, and your coldkey password unlocks the transfer. If the
 commitment fails after paying, rerun with the `--payment-block` and
 `--payment-tx` it prints, rather than paying again.
@@ -70,9 +72,11 @@ src/                    optional extra .py / .json / .yaml / .txt / .md files
   any other pickle-based file is refused (`HF_WEIGHTS_FORMAT`). Convert with
   `safetensors.torch.save_file(model.state_dict(), "model.safetensors")`.
 - **`HF_TOKEN` travels in your zip.** The validator uses it once to download
-  your weights and strips it before any reveal. Make it a fine-grained,
-  read-only token scoped to that one repo: `validate` refuses a token that
-  can write (`HF_TOKEN_WRITE_SCOPE`). Public repos need no token.
+  your private weights and strips it before any reveal. Because it leaves
+  your machine, make it a fine-grained token with read access to that one
+  repo only (huggingface.co/settings/tokens → Fine-grained → Repositories →
+  read). `validate` refuses a token that can write anything
+  (`HF_TOKEN_WRITE_SCOPE`). Public weights need no token at all.
 - **The base image** for SDK 1.0.0 has Python 3.12, torch 2.5.1,
   torchvision 0.20.1, numpy 2.2.6, pillow 11.3.0 and safetensors 0.8.0. List
   anything else in `requirements.in` and run `radiant-sdk lock`.

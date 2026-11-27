@@ -62,7 +62,7 @@ def test_seed_is_idempotent_and_hash_stable(migrated, capsys):
         rows = store.list_campaigns(conn)
     assert len(rows) == 1 and store.stored_hash_matches(rows[0])
     assert rows[0]["submission_fee_history"] == [
-        {"amount_tao": "0.01", "recipient": "5GrwvaEF5zXb26Fz9rcQpDWS57CtERHpNehXCPcNoHGKutQY",
+        {"amount_tao": "0.01", "recipient": "5GYfPfFRQPaLytjCyT78X769ZU9xm5tL43dN11sknTiZx34a",
          "effective_from_block": 0}]
 
 

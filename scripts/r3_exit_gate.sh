@@ -39,7 +39,8 @@ W=$(mktemp -d -t radiant-r3gate.XXXXXX)
 rand() { python3 -c 'import secrets; print(secrets.token_hex(20))'; }
 port() { python3 -c 'import socket; s=socket.socket(); s.bind(("127.0.0.1",0)); print(s.getsockname()[1])'; }
 HTTP_PORT=$(port); MINIO_PORT=$(port)
-RECIPIENT=$(uv run --extra sdk python -c 'from radiant_sdk.submit import TRUSTED_FEE_RECIPIENTS as t; print(t["test"])')
+# The campaign sets its own fee recipient (submission_fee in the manifest).
+RECIPIENT=$(python3 -c 'import json; print(json.load(open("campaign/fixtures/testnet-cxr-01.json"))["submission_fee"]["recipient"])')
 cat > "$W/env" <<EOF
 POSTGRES_PASSWORD=$(rand)
 RADIANT_DB_READONLY_PASSWORD=$(rand)
@@ -49,8 +50,6 @@ RADIANT_HTTP_BIND=127.0.0.1:${HTTP_PORT}
 RADIANT_HTTPS_BIND=127.0.0.1:$(port)
 RADIANT_NETWORK=test
 RADIANT_NETUID=292
-RADIANT_FEE_RECIPIENT=${RECIPIENT}
-RADIANT_FEE_TAO=0.01
 RADIANT_POLL_INTERVAL_S=12
 RADIANT_S3_PRESIGN_ENDPOINT_URL=http://127.0.0.1:${MINIO_PORT}
 RADIANT_SEED_MANIFEST=campaign/fixtures/testnet-cxr-01.json

@@ -33,7 +33,7 @@ from ..db.test_db import FIXTURE
 moto_server = pytest.importorskip("moto.server")
 bt_sp = pytest.importorskip("bittensor.sp_core")
 
-RECIPIENT = "5GrwvaEF5zXb26Fz9rcQpDWS57CtERHpNehXCPcNoHGKutQY"  # the fixture's fee recipient (dev key Alice)
+RECIPIENT = "5GYfPfFRQPaLytjCyT78X769ZU9xm5tL43dN11sknTiZx34a"  # the fixture's fee recipient (owner coldkey)
 FEE_RAO = 10_000_000  # 0.01 TAO
 
 

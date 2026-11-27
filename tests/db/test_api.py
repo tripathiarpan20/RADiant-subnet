@@ -27,5 +27,5 @@ def test_health_info_and_campaigns(client):
     body = one.json()
     assert body["labels"] == ["fibrosis", "pneumonia", "silicosis", "tuberculosis"]
     assert body["submission_fee"] == {"amount_tao": "0.01",
-                                      "recipient": "5GrwvaEF5zXb26Fz9rcQpDWS57CtERHpNehXCPcNoHGKutQY"}
+                                      "recipient": "5GYfPfFRQPaLytjCyT78X769ZU9xm5tL43dN11sknTiZx34a"}
     assert client.get("/v1/campaigns/nope").status_code == 404
