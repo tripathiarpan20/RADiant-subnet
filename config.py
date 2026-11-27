@@ -37,6 +37,14 @@ class Settings:
     s3_access_key: str
     s3_secret_key: str
     s3_prefix: str
+    # Endpoint written into presigned URLs: what miners can reach. For a
+    # local MinIO that is the host-published address, not the compose name.
+    s3_presign_endpoint_url: str
+    upload_auth_ttl_s: int
+    presign_expires_s: int
+    # chain intake (R3)
+    poll_interval_s: int
+    fee_exempt_hotkeys: frozenset[str]
     # DataHive (R5)
     datahive_api_base: str
     datahive_api_key: str
@@ -63,6 +71,12 @@ class Settings:
             s3_access_key=e.get("RADIANT_S3_ACCESS_KEY", ""),
             s3_secret_key=e.get("RADIANT_S3_SECRET_KEY", ""),
             s3_prefix=e.get("RADIANT_S3_PREFIX", "radiant").strip("/"),
+            s3_presign_endpoint_url=e.get("RADIANT_S3_PRESIGN_ENDPOINT_URL", "") or e.get("RADIANT_S3_ENDPOINT_URL", ""),
+            upload_auth_ttl_s=_int(e, "RADIANT_UPLOAD_AUTH_TTL_S", 300),
+            presign_expires_s=_int(e, "RADIANT_PRESIGN_EXPIRES_S", 600),
+            poll_interval_s=_int(e, "RADIANT_POLL_INTERVAL_S", 30),
+            fee_exempt_hotkeys=frozenset(h.strip() for h in e.get("RADIANT_FEE_EXEMPT_HOTKEYS", "").split(",")
+                                         if h.strip()),
             datahive_api_base=e.get("DATAHIVE_API_BASE", ""),
             datahive_api_key=e.get("DATAHIVE_API_KEY", ""),
             max_rounds_per_24h=_int(e, "MAX_ROUNDS_PER_24H", 3),
