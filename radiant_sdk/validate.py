@@ -18,9 +18,11 @@ shows it to the miner. On success a receipt is written next to the zip;
 
 from __future__ import annotations
 
+import contextlib
 import hashlib
 import json
 import os
+import queue
 import shutil
 import sys
 import tempfile
@@ -35,7 +37,7 @@ from urllib.parse import urlparse
 from . import SDK_VERSION
 from . import reasons as R
 from .checks import StaticReport, read_zip, run_static_checks
-from .harness import RESULT_PREFIX
+from .harness import RESULT_PREFIX, STARTED_MARKER
 
 RECEIPT_SCHEMA = 1
 RECEIPT_MAX_AGE = timedelta(hours=24)
@@ -172,7 +174,8 @@ def parse_result(output: str) -> dict[str, Any]:
     raise R.SolutionRejected(R.SANDBOX_FAILED, "the sandbox ended without a harness result")
 
 
-def run_qualification(modal, app, image, descriptor: dict, manifest: dict, *, eval_timeout_s: float = 600) -> dict:
+def run_qualification(modal, app, image, descriptor: dict, manifest: dict, *, eval_timeout_s: float = 600,
+                      gpu_wait_s: float = 900) -> dict:
     limits, harness = manifest["limits"], manifest["harness"]
     cmd = ["python", "-m", "radiant_sdk.harness", "qualify",
            "--labels", ",".join(manifest["labels"]), "--batch-size", str(descriptor["batch_size"]),
@@ -188,14 +191,47 @@ def run_qualification(modal, app, image, descriptor: dict, manifest: dict, *, ev
         secrets=[], include_oidc_identity_token=False, workdir="/solution",
         tags={"purpose": "radiant-sdk-validate"},
     )
-    started = time.monotonic()
+    q: queue.Queue = queue.Queue()
+
+    def pump() -> None:
+        try:
+            for chunk in sb.stdout:
+                q.put(chunk if isinstance(chunk, str) else chunk.decode("utf-8", "replace"))
+        except Exception:
+            pass
+        finally:
+            q.put(None)
+
+    threading.Thread(target=pump, daemon=True).start()
+    started: float | None = None
     lines: list[str] = []
     try:
-        for line in sb.stdout:
-            text = line if isinstance(line, str) else line.decode("utf-8", "replace")
-            lines.append(text)
-            if not text.startswith(RESULT_PREFIX):
-                print(f"  | {text.rstrip()}", file=sys.stderr, flush=True)
+        while True:
+            if started is None:
+                remaining = t0 + gpu_wait_s - time.monotonic()
+                if remaining <= 0:
+                    raise R.InfraUnavailable(
+                        R.GPU_UNAVAILABLE,
+                        f"Modal had no {descriptor['gpu']} free after {gpu_wait_s:.0f}s; nothing was billed for the "
+                        "wait. Retry later, raise --gpu-wait, or set another allowed GPU in radiant_solution.json")
+                try:
+                    chunk = q.get(timeout=min(remaining, 30))
+                except queue.Empty:
+                    log("qualify", f"waiting for a {descriptor['gpu']} ({time.monotonic() - t0:.0f}s so far)")
+                    continue
+            else:
+                chunk = q.get()
+            if chunk is None:
+                break
+            for text in chunk.splitlines(keepends=True):
+                if text.strip() == STARTED_MARKER:
+                    if started is None:
+                        started = time.monotonic()
+                        log("qualify", f"container started after {started - t0:.0f}s")
+                    continue
+                lines.append(text)
+                if not text.startswith(RESULT_PREFIX):
+                    print(f"  | {text.rstrip()}", file=sys.stderr, flush=True)
         sb.wait(raise_on_termination=False)
         err = sb.stderr.read()
         err = err if isinstance(err, str) else err.decode("utf-8", "replace")
@@ -206,10 +242,11 @@ def run_qualification(modal, app, image, descriptor: dict, manifest: dict, *, ev
             sb.terminate()
         except Exception:
             pass
+    started = started or t0
     result = parse_result("".join(lines))
     wall = time.monotonic() - started
     result["sandbox_wall_s"] = round(wall, 1)
-    result["create_wait_s"] = round(started - t0, 1)
+    result["gpu_wait_s"] = round(started - t0, 1)
     result["approx_cost_usd"] = round(wall * APPROX_USD_PER_S.get(descriptor["gpu"], 0.0), 4)
     if result.get("status") != "passed":
         raise R.SolutionRejected(result.get("reason_code", R.SANDBOX_FAILED), result.get("detail", ""))
@@ -281,6 +318,7 @@ class ValidateOptions:
     modal_environment: str | None = None
     cache_dir: Path = Path.home() / ".cache" / "radiant-sdk"
     static_only: bool = False
+    gpu_wait_s: float = 900.0
 
 
 def validate(zip_path: Path, opts: ValidateOptions) -> dict[str, Any]:
@@ -316,11 +354,13 @@ def validate(zip_path: Path, opts: ValidateOptions) -> dict[str, Any]:
         log("build", f"building the image (limit {manifest['limits']['modal_build_timeout_s']}s); "
                      "cached layers are reused")
         t0 = time.monotonic()
-        with modal.enable_output():
+        # Modal's build log goes to stdout; send it to stderr with the rest of
+        # the log so stdout stays one JSON document.
+        with contextlib.redirect_stdout(sys.stderr), modal.enable_output():
             image = _build_with_deadline(image, app, manifest["limits"]["modal_build_timeout_s"])
         log("build", f"done in {time.monotonic() - t0:.0f}s")
         log("qualify", f"offline sandbox on {descriptor['gpu']}, {descriptor['cpus']} CPUs; harness log follows")
-        qual = run_qualification(modal, app, image, descriptor, manifest)
+        qual = run_qualification(modal, app, image, descriptor, manifest, gpu_wait_s=opts.gpu_wait_s)
     log("qualify", f"passed: load {qual['load_total_s']}s (limit {manifest['limits']['model_load_timeout_s']}s), "
                    f"single {qual['single_s']}s, {qual['images']} images in {qual['batch_s']}s; "
                    f"about ${qual['approx_cost_usd']}")

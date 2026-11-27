@@ -49,7 +49,8 @@ def cmd_validate(args) -> int:
 
     opts = ValidateOptions(campaign_id=args.campaign, api_url=args.api_url,
                            manifest_file=Path(args.manifest) if args.manifest else None,
-                           modal_environment=args.modal_environment, static_only=args.static_only)
+                           modal_environment=args.modal_environment, static_only=args.static_only,
+                           gpu_wait_s=args.gpu_wait)
     result = validate(Path(args.zip), opts)
     print(json.dumps(result, indent=2, sort_keys=True))
     return 0
@@ -98,6 +99,8 @@ def main(argv: list[str] | None = None) -> int:
         if name == "validate":
             sp.add_argument("--modal-environment", default=None)
             sp.add_argument("--static-only", action="store_true", help="skip Hugging Face and Modal")
+            sp.add_argument("--gpu-wait", type=float, default=900.0,
+                            help="seconds to wait for Modal GPU capacity before giving up (default 900)")
         sp.set_defaults(fn=fn)
 
     sp = sub.add_parser("status", help="submission state and gate log")
@@ -112,6 +115,10 @@ def main(argv: list[str] | None = None) -> int:
         print(json.dumps({"status": "rejected", "reason_code": exc.code, "detail": exc.detail}, indent=2))
         print(f"radiant-sdk: rejected: {exc.code}: {exc.detail}", file=sys.stderr)
         return 1
+    except R.InfraUnavailable as exc:
+        print(json.dumps({"status": "infra_unavailable", "reason_code": exc.code, "detail": exc.detail}, indent=2))
+        print(f"radiant-sdk: not your solution's fault: {exc.detail}", file=sys.stderr)
+        return 4
     except ValueError as exc:
         print(f"radiant-sdk: {exc}", file=sys.stderr)
         return 2

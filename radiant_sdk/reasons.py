@@ -17,6 +17,18 @@ class SolutionRejected(Exception):
         super().__init__(f"{code}: {detail}")
 
 
+class InfraUnavailable(Exception):
+    """Not the miner's fault (e.g. no GPU capacity). Retry later; never scored."""
+
+    def __init__(self, code: str, detail: str) -> None:
+        self.code = code
+        self.detail = detail
+        super().__init__(f"{code}: {detail}")
+
+
+# Infrastructure, never a miner fault
+GPU_UNAVAILABLE = "GPU_UNAVAILABLE"
+
 # g1 integrity / g2 archive safety
 ZIP_TOO_LARGE = "ZIP_TOO_LARGE"
 ZIP_INVALID = "ZIP_INVALID"

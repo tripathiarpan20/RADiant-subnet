@@ -5,9 +5,20 @@ description = "RADiant: a campaign-based Bittensor subnet for chest X-ray classi
 readme = "README.md"
 requires-python = ">=3.12"
 license = { text = "MIT" }
-dependencies = []
+# The installable part is the miner SDK (radiant_sdk). The validator code in
+# this repo runs from source in the Docker image.
+dependencies = ["numpy>=1.26"]
+
+[project.scripts]
+radiant-sdk = "radiant_sdk.cli:main"
 
 [project.optional-dependencies]
+# What `radiant-sdk validate` needs on a miner's machine.
+sdk = [
+    "requests>=2.32",
+    "huggingface_hub>=0.26",
+    "modal>=1.4",
+]
 # Validator services (api, seed, migrations). The Docker image installs this.
 validator = [
     "psycopg[binary]>=3.2",
@@ -38,6 +49,22 @@ dev = ["pytest>=8.3", "moto[server]>=5.0"]
 testpaths = ["tests"]
 addopts = "-q"
 
-[tool.uv]
-# Not installable yet; R1 turns the repo into packages.
-package = false
+[build-system]
+requires = ["setuptools>=75"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["radiant_sdk*"]
+
+[tool.setuptools.package-data]
+radiant_sdk = [
+    "base_image/requirements.in",
+    "base_image/requirements.txt",
+    "reference_miner/*.py",
+    "reference_miner/*.json",
+    "reference_miner/*.md",
+    "reference_miner/requirements.in",
+    "reference_miner/requirements.lock",
+    "reference_miner/.env.template",
+    "reference_miner/miner.env.template",
+]

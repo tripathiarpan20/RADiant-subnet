@@ -2596,7 +2596,10 @@ wheels = [
 [[package]]
 name = "radiant-subnet"
 version = "0.0.1"
-source = { virtual = "." }
+source = { editable = "." }
+dependencies = [
+    { name = "numpy" },
+]
 
 [package.optional-dependencies]
 dev = [
@@ -2618,6 +2621,11 @@ r0-models = [
     { name = "torchvision" },
     { name = "torchxrayvision" },
 ]
+sdk = [
+    { name = "huggingface-hub" },
+    { name = "modal" },
+    { name = "requests" },
+]
 validator = [
     { name = "boto3" },
     { name = "fastapi" },
@@ -2631,21 +2639,25 @@ requires-dist = [
     { name = "boto3", marker = "extra == 'validator'", specifier = ">=1.35" },
     { name = "fastapi", marker = "extra == 'validator'", specifier = ">=0.115" },
     { name = "huggingface-hub", marker = "extra == 'r0'", specifier = ">=0.26" },
+    { name = "huggingface-hub", marker = "extra == 'sdk'", specifier = ">=0.26" },
     { name = "modal", marker = "extra == 'r0'", specifier = ">=1.4" },
+    { name = "modal", marker = "extra == 'sdk'", specifier = ">=1.4" },
     { name = "moto", extras = ["server"], marker = "extra == 'dev'", specifier = ">=5.0" },
+    { name = "numpy", specifier = ">=1.26" },
     { name = "numpy", marker = "extra == 'r0'", specifier = ">=1.26" },
     { name = "opencv-python-headless", marker = "extra == 'r0-models'", specifier = ">=4.10" },
     { name = "pillow", marker = "extra == 'r0'", specifier = ">=10.4" },
     { name = "psycopg", extras = ["binary"], marker = "extra == 'validator'", specifier = ">=3.2" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.3" },
     { name = "requests", marker = "extra == 'r0'", specifier = ">=2.32" },
+    { name = "requests", marker = "extra == 'sdk'", specifier = ">=2.32" },
     { name = "scikit-learn", marker = "extra == 'r0-models'", specifier = ">=1.5" },
     { name = "torch", marker = "extra == 'r0-models'", specifier = ">=2.4" },
     { name = "torchvision", marker = "extra == 'r0-models'", specifier = ">=0.19" },
     { name = "torchxrayvision", marker = "extra == 'r0-models'", specifier = ">=1.5" },
     { name = "uvicorn", marker = "extra == 'validator'", specifier = ">=0.32" },
 ]
-provides-extras = ["validator", "r0", "r0-models", "dev"]
+provides-extras = ["sdk", "validator", "r0", "r0-models", "dev"]
 
 [[package]]
 name = "referencing"

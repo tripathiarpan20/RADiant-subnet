@@ -40,6 +40,8 @@ from . import reasons as R
 from .models.v1 import ChestXRayClassifier
 
 RESULT_PREFIX = "RADIANT_RESULT "
+# Printed first, so the caller can tell "the container started" from "still waiting for a GPU".
+STARTED_MARKER = "RADIANT_HARNESS_STARTED"
 
 # Public warmup set: sizes like real chest X-rays, including non-square and
 # odd sizes, so a miner's resizing is exercised. Contents are deterministic.
@@ -214,6 +216,7 @@ def run(args) -> None:
 
 
 def main(argv: list[str] | None = None) -> None:
+    print(STARTED_MARKER, flush=True)
     p = argparse.ArgumentParser(prog="python -m radiant_sdk.harness")
     p.add_argument("mode", choices=("qualify", "run"))
     p.add_argument("--solution", default="/solution")
