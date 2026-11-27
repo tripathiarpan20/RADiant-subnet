@@ -1,0 +1,113 @@
+{
+  "probe": "modal",
+  "ran_at": "2026-11-27T12:37:46+00:00",
+  "host": {
+    "system": "Darwin",
+    "machine": "arm64",
+    "python": "3.12.6"
+  },
+  "exit_gate_met": true,
+  "gates": [
+    {
+      "gate": "modal_l40s_offline",
+      "status": "passed",
+      "summary": "egress blocked, no credentials inside",
+      "details": {
+        "gpu_requested": "L40S",
+        "sandbox_wall_s": 15.3,
+        "approx_cost_usd": 0.0083,
+        "direct_ip_blocked": "OSError",
+        "dns_blocked": "gaierror",
+        "https_blocked": "URLError",
+        "credentials_absent": true
+      }
+    },
+    {
+      "gate": "modal_l40s_gpu_observed",
+      "status": "passed",
+      "summary": "sandbox saw NVIDIA L40S",
+      "details": {
+        "gpu_requested": "L40S",
+        "sandbox_wall_s": 15.3,
+        "approx_cost_usd": 0.0083,
+        "nvidia_smi": "NVIDIA L40S, 46068 MiB, 620.70.06",
+        "torch_gpu": "NVIDIA L40S"
+      }
+    },
+    {
+      "gate": "modal_l40s_model_load",
+      "status": "passed",
+      "summary": "DenseNet-121 loaded offline in 4.973s (limit 120s); single 0.0086s, batch of 64 0.1161s",
+      "details": {
+        "gpu_requested": "L40S",
+        "sandbox_wall_s": 15.3,
+        "approx_cost_usd": 0.0083,
+        "import_s": 4.882,
+        "load_model_s": 4.973,
+        "single_s": 0.0086,
+        "batch64_s": 0.1161,
+        "output_shape": [
+          64,
+          18
+        ],
+        "label_count": 18
+      }
+    },
+    {
+      "gate": "modal_l4_offline",
+      "status": "passed",
+      "summary": "egress blocked, no credentials inside",
+      "details": {
+        "gpu_requested": "L4",
+        "sandbox_wall_s": 458.4,
+        "approx_cost_usd": 0.1018,
+        "direct_ip_blocked": "OSError",
+        "dns_blocked": "gaierror",
+        "https_blocked": "URLError",
+        "credentials_absent": true
+      }
+    },
+    {
+      "gate": "modal_l4_gpu_observed",
+      "status": "passed",
+      "summary": "sandbox saw NVIDIA L4",
+      "details": {
+        "gpu_requested": "L4",
+        "sandbox_wall_s": 458.4,
+        "approx_cost_usd": 0.1018,
+        "nvidia_smi": "NVIDIA L4, 23034 MiB, 620.70.06",
+        "torch_gpu": "NVIDIA L4"
+      }
+    },
+    {
+      "gate": "modal_l4_model_load",
+      "status": "passed",
+      "summary": "DenseNet-121 loaded offline in 0.833s (limit 120s); single 0.0215s, batch of 64 0.2052s",
+      "details": {
+        "gpu_requested": "L4",
+        "sandbox_wall_s": 458.4,
+        "approx_cost_usd": 0.1018,
+        "import_s": 8.148,
+        "load_model_s": 0.833,
+        "single_s": 0.0215,
+        "batch64_s": 0.2052,
+        "output_shape": [
+          64,
+          18
+        ],
+        "label_count": 18
+      }
+    },
+    {
+      "gate": "modal_timeout_enforced",
+      "status": "passed",
+      "summary": "sandbox with a 10s timeout running sleep 120 was stopped after 10s (SandboxTimeoutError)",
+      "details": {
+        "timeout_s": 10,
+        "wall_s": 10.4,
+        "returncode": null,
+        "timed_out": true
+      }
+    }
+  ]
+}

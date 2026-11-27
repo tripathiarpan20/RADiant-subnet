@@ -1,0 +1,30 @@
+{
+  "probe": "datahive",
+  "ran_at": "2026-11-27T12:07:37+00:00",
+  "host": {
+    "system": "Darwin",
+    "machine": "arm64",
+    "python": "3.12.6"
+  },
+  "exit_gate_met": false,
+  "gates": [
+    {
+      "gate": "datahive_reachability",
+      "status": "pending",
+      "summary": "DataHive staging API not available yet; run from the Hetzner validator host once it is",
+      "details": {}
+    },
+    {
+      "gate": "datahive_fetch_time",
+      "status": "pending",
+      "summary": "DataHive staging API not available yet; run from the Hetzner validator host once it is",
+      "details": {}
+    },
+    {
+      "gate": "datahive_rate_limits",
+      "status": "pending",
+      "summary": "DataHive staging API not available yet; run from the Hetzner validator host once it is",
+      "details": {}
+    }
+  ]
+}

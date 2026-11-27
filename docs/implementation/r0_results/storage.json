@@ -1,0 +1,48 @@
+{
+  "probe": "storage",
+  "ran_at": "2026-11-27T12:07:38+00:00",
+  "host": {
+    "system": "Darwin",
+    "machine": "arm64",
+    "python": "3.12.6"
+  },
+  "exit_gate_met": false,
+  "gates": [
+    {
+      "gate": "storage_hippius_presigned_put",
+      "status": "blocked",
+      "summary": "R0_HIPPIUS_S3_* credentials not set",
+      "details": {}
+    },
+    {
+      "gate": "storage_hippius_checksum",
+      "status": "blocked",
+      "summary": "R0_HIPPIUS_S3_* credentials not set",
+      "details": {}
+    },
+    {
+      "gate": "storage_hippius_if_none_match",
+      "status": "blocked",
+      "summary": "R0_HIPPIUS_S3_* credentials not set",
+      "details": {}
+    },
+    {
+      "gate": "storage_backblaze_presigned_put",
+      "status": "blocked",
+      "summary": "R0_BACKBLAZE_S3_* credentials not set",
+      "details": {}
+    },
+    {
+      "gate": "storage_backblaze_checksum",
+      "status": "blocked",
+      "summary": "R0_BACKBLAZE_S3_* credentials not set",
+      "details": {}
+    },
+    {
+      "gate": "storage_backblaze_if_none_match",
+      "status": "blocked",
+      "summary": "R0_BACKBLAZE_S3_* credentials not set",
+      "details": {}
+    }
+  ]
+}

@@ -1,0 +1,124 @@
+{
+  "probe": "models",
+  "ran_at": "2026-11-27T12:07:46+00:00",
+  "host": {
+    "system": "Darwin",
+    "machine": "arm64",
+    "python": "3.12.6"
+  },
+  "exit_gate_met": true,
+  "gates": [
+    {
+      "gate": "base_model_densenet_scored",
+      "status": "passed",
+      "summary": "10 images scored; 5 of 7 conditions map to a head (uncovered: silicosis, tuberculosis)",
+      "details": {
+        "weights": "densenet121-res224-all",
+        "device": "cpu",
+        "images": 10,
+        "load_model_s": 0.15,
+        "preprocess_s": 0.62,
+        "inference_s": 0.23,
+        "heads": [
+          "Atelectasis",
+          "Consolidation",
+          "Infiltration",
+          "Pneumothorax",
+          "Edema",
+          "Emphysema",
+          "Fibrosis",
+          "Effusion",
+          "Pneumonia",
+          "Pleural_Thickening",
+          "Cardiomegaly",
+          "Nodule",
+          "Mass",
+          "Hernia",
+          "Lung Lesion",
+          "Fracture",
+          "Lung Opacity",
+          "Enlarged Cardiomediastinum"
+        ],
+        "condition_map": {
+          "congestive heart failure": "Edema",
+          "lobar collapse": "Atelectasis",
+          "pleural effusion": "Effusion",
+          "pneumonia": "Pneumonia",
+          "viral pneumonitis": "Pneumonia"
+        },
+        "uncovered_conditions": [
+          "silicosis",
+          "tuberculosis"
+        ],
+        "per_label": {
+          "congestive heart failure": {
+            "auroc": 0.556,
+            "positives": 1,
+            "n": 10
+          },
+          "lobar collapse": {
+            "auroc": 0.444,
+            "positives": 1,
+            "n": 10
+          },
+          "pleural effusion": {
+            "auroc": 0.667,
+            "positives": 1,
+            "n": 10
+          },
+          "pneumonia": {
+            "auroc": 0.667,
+            "positives": 1,
+            "n": 10
+          },
+          "viral pneumonitis": {
+            "auroc": 0.0,
+            "positives": 1,
+            "n": 10
+          }
+        },
+        "source": "dir"
+      }
+    },
+    {
+      "gate": "base_model_densenet_licence",
+      "status": "passed",
+      "summary": "torchxrayvision 1.5.7: ['License :: OSI Approved :: Apache Software License']; weights trained on NIH, CheXpert, MIMIC-CXR, PadChest and others, whose data terms vary (CheXpert and MIMIC are research-use)",
+      "details": {
+        "version": "1.5.7",
+        "license": null,
+        "classifiers": [
+          "License :: OSI Approved :: Apache Software License"
+        ],
+        "head": "18 pathology outputs",
+        "home": "https://github.com/mlmed/torchxrayvision"
+      }
+    },
+    {
+      "gate": "base_model_rad_dino_licence",
+      "status": "passed",
+      "summary": "microsoft/rad-dino: licence mit, gated=False; classification head: none: image encoder only",
+      "details": {
+        "repo": "microsoft/rad-dino",
+        "license": "mit",
+        "license_link": null,
+        "gated": false,
+        "library": "transformers",
+        "head": "none: image encoder only"
+      }
+    },
+    {
+      "gate": "base_model_cxr_foundation_licence",
+      "status": "passed",
+      "summary": "google/cxr-foundation: licence health-ai-developer-foundations, gated=auto; classification head: none: embeddings (plus zero-shot text); needs a probe head",
+      "details": {
+        "repo": "google/cxr-foundation",
+        "license": "health-ai-developer-foundations",
+        "license_link": "https://developers.google.com/health-ai-developer-foundations/terms",
+        "gated": "auto",
+        "library": "cxr-foundation",
+        "head": "none: embeddings (plus zero-shot text); needs a probe head"
+      }
+    }
+  ]
+}
