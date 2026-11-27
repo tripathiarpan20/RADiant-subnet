@@ -43,7 +43,7 @@ Every phase keeps this current. Anything deferred to launch goes here.
 
 ## Found in the 27 Nov review of R0 to R2
 
-- [x] Safetensors reference weights published at `tripathiarpan20/densenet121-res224-all-safetensors@66fd21c9` and pinned in the reference miner. Move them to a RADiant org if one is created.
+- [x] Safetensors reference weights published under the RADiant org at `radiant-bittensor/densenet121-res224-all-safetensors@22f17963` and pinned in the reference miner.
 - [ ] R3: a public API domain behind Caddy for miners on other machines.
 - [ ] R3: point the app's `RADIANT_S3_*` at whichever store the storage probe passes (Hippius or MinIO); the R0 probe uses `R0_HIPPIUS_S3_*`.
 - [ ] R7: `radiant-sdk prepare --from <hash>` to fork a revealed solution.
