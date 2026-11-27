@@ -211,9 +211,18 @@ def parse_result(output: str) -> dict[str, Any]:
     raise R.SolutionRejected(R.SANDBOX_FAILED, "the sandbox ended without a harness result")
 
 
-def run_qualification(modal, app, image, descriptor: dict, manifest: dict, *, eval_timeout_s: float = 600,
+def eval_timeout_for(limits: dict, megapixels: float) -> float:
+    """The manifest's eval deadline: a minimum plus a per-megapixel allowance."""
+    return max(float(limits["eval_timeout_min_s"]), limits["eval_timeout_per_megapixel_s"] * megapixels)
+
+
+def run_qualification(modal, app, image, descriptor: dict, manifest: dict, *, eval_timeout_s: float | None = None,
                       gpu_wait_s: float = 900) -> dict:
     limits, harness = manifest["limits"], manifest["harness"]
+    if eval_timeout_s is None:
+        from .harness import WARMUP_SHAPES
+
+        eval_timeout_s = eval_timeout_for(limits, sum(h * w for h, w in WARMUP_SHAPES) / 1e6)
     cmd = ["python", "-m", "radiant_sdk.harness", "qualify",
            "--labels", ",".join(manifest["labels"]), "--batch-size", str(descriptor["batch_size"]),
            "--decimals", str(harness["prediction_decimals"]),

@@ -1,5 +1,6 @@
-"""radiant-sdk: prepare | validate | submit | status.
+"""radiant-sdk: lock | prepare | validate | submit | status.
 
+    radiant-sdk lock requirements.in --out requirements.lock
     radiant-sdk prepare ./my-miner --out build
     radiant-sdk validate build/solution.zip --campaign testnet-cxr-01 [--api-url URL | --manifest FILE]
     radiant-sdk submit build/solution.zip --campaign testnet-cxr-01
@@ -42,6 +43,12 @@ def cmd_prepare(args) -> int:
     print(json.dumps({"zip": result.zip_path, "sha256": result.sha256, "code_sha256": result.code_sha256,
                       "files": result.files, "skipped": result.skipped}, indent=2))
     return 0
+
+
+def cmd_lock(args) -> int:
+    from .lock import main as lock_main
+
+    return lock_main(args.requirements, args.out)
 
 
 def cmd_validate(args) -> int:
@@ -88,6 +95,11 @@ def main(argv: list[str] | None = None) -> int:
     sp.add_argument("src")
     sp.add_argument("--out", default="build")
     sp.set_defaults(fn=cmd_prepare)
+
+    sp = sub.add_parser("lock", help="requirements.in -> hash-locked requirements.lock for the sandbox")
+    sp.add_argument("requirements", nargs="?", default="requirements.in")
+    sp.add_argument("--out", default="requirements.lock")
+    sp.set_defaults(fn=cmd_lock)
 
     for name, fn, helptext in (("validate", cmd_validate, "run the validator's checks and an offline Modal self-test"),
                                ("submit", cmd_submit, "upload, pay and commit (needs a fresh receipt)")):
