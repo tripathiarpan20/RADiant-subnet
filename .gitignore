@@ -10,6 +10,5 @@ __pycache__/
 *.egg-info/
 # Probe scratch (downloads, images); results JSON under docs/ is kept
 .r0_scratch/
-# Local miner working copies and SDK build output
+# Local miner working copies (R4 adds a top-level build/ package, so don't ignore build/)
 /my-miner/
-build/
