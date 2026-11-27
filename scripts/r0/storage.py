@@ -16,6 +16,9 @@ Gates per provider:
     storage_<p>_presigned_put    a correct presigned PUT succeeds and HEAD shows the checksum
     storage_<p>_checksum         a body that doesn't match the signed checksum is rejected
     storage_<p>_if_none_match    a second PUT to the same key is rejected (412)
+    storage_<p>_private          an anonymous GET of the object and of the bucket listing fails
+    storage_<p>_content_length   a body larger than the signed Content-Length is rejected, so a
+                                 miner can't upload more than the size it declared
 """
 
 from __future__ import annotations
@@ -82,15 +85,15 @@ def client_for(t: S3Target):
     )
 
 
-def presign_put(client, bucket: str, key: str, body: bytes, expires: int) -> tuple[str, dict[str, str]]:
-    """Same parameters as Pareton's storage/s3.py create_presigned_patch_upload."""
+def presign_put(client, bucket: str, key: str, body: bytes, expires: int,
+                content_length: int | None = None) -> tuple[str, dict[str, str]]:
+    """Pareton's presign parameters, plus a signed Content-Length (as RADiant's storage/s3.py)."""
     checksum = checksum_b64(body)
-    url = client.generate_presigned_url(
-        "put_object",
-        Params={"Bucket": bucket, "Key": key, "ContentType": "application/zip",
-                "ChecksumSHA256": checksum, "IfNoneMatch": "*"},
-        ExpiresIn=expires,
-    )
+    params = {"Bucket": bucket, "Key": key, "ContentType": "application/zip", "ChecksumSHA256": checksum,
+              "IfNoneMatch": "*"}
+    if content_length is not None:
+        params["ContentLength"] = content_length
+    url = client.generate_presigned_url("put_object", Params=params, ExpiresIn=expires)
     headers = {"Content-Type": "application/zip", "x-amz-checksum-sha256": checksum, "If-None-Match": "*"}
     return url, headers
 
@@ -132,6 +135,29 @@ def probe_provider(t: S3Target, expires: int = 300, keep: bool = False, put=_put
             {**common, "put_status": status, "put_body": text if not ok else "", **head,
              "checksum_round_trips": stored_checksum == headers["x-amz-checksum-sha256"]}))
 
+        # 1b. the bucket and the object are private
+        import requests
+
+        base = t.endpoint.rstrip("/")
+        anon_obj = requests.get(f"{base}/{t.bucket}/{key}", timeout=20).status_code
+        anon_list = requests.get(f"{base}/{t.bucket}?list-type=2", timeout=20).status_code
+        private = anon_obj in (401, 403) and anon_list in (401, 403)
+        results.append(GateResult(
+            f"storage_{p}_private", GateStatus.PASSED if private else GateStatus.FAILED,
+            f"anonymous GET of the object returned {anon_obj}, of the listing {anon_list} (want 401/403)",
+            {**common, "anonymous_object_status": anon_obj, "anonymous_list_status": anon_list}))
+
+        # 1c. a larger body than the signed Content-Length
+        key5 = f"r0-probe/{run_id}/oversize.zip"
+        keys.append(key5)
+        big = body + os.urandom(1024)
+        url5, headers5 = presign_put(client, t.bucket, key5, big, expires, content_length=len(body))
+        status5, text5 = put(url5, headers5, big)
+        results.append(GateResult(
+            f"storage_{p}_content_length", GateStatus.PASSED if 400 <= status5 < 500 else GateStatus.FAILED,
+            f"a body 1 KiB over the signed Content-Length returned {status5} (want 4xx)",
+            {**common, "oversize_status": status5, "oversize_body": text5 if status5 < 400 else ""}))
+
         # 2. overwrite of the same key
         status2, text2 = put(url, headers, body)
         results.append(GateResult(
@@ -159,7 +185,7 @@ def probe_provider(t: S3Target, expires: int = 300, keep: bool = False, put=_put
              "missing_header_status": status4, "missing_header_body": text4}))
     except Exception as exc:
         done = {r.gate for r in results}
-        for g in ("presigned_put", "if_none_match", "checksum"):
+        for g in ("presigned_put", "private", "content_length", "if_none_match", "checksum"):
             name = f"storage_{p}_{g}"
             if name not in done:
                 results.append(GateResult(name, GateStatus.FAILED, f"{type(exc).__name__}: {str(exc)[:200]}", common))
@@ -185,7 +211,7 @@ def run(args: argparse.Namespace) -> list[GateResult]:
         if t is None:
             results += [GateResult(f"storage_{provider}_{g}", GateStatus.BLOCKED,
                                    f"R0_{provider.upper()}_S3_* credentials not set")
-                        for g in ("presigned_put", "checksum", "if_none_match")]
+                        for g in ("presigned_put", "private", "content_length", "checksum", "if_none_match")]
             continue
         results += probe_provider(t, args.expires, args.keep)
     return results

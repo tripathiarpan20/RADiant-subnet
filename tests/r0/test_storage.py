@@ -47,7 +47,7 @@ def test_missing_credentials_block_each_gate(monkeypatch):
         keep = False
 
     res = run(A())
-    assert len(res) == 3 and all(r.status is GateStatus.BLOCKED for r in res)
+    assert len(res) == 5 and all(r.status is GateStatus.BLOCKED for r in res)
 
 
 def test_checksum_is_base64_sha256():

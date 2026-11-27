@@ -1,6 +1,6 @@
 {
   "probe": "storage",
-  "ran_at": "2026-11-27T16:12:08+00:00",
+  "ran_at": "2026-11-27T16:40:53+00:00",
   "host": {
     "system": "Darwin",
     "machine": "arm64",
@@ -37,8 +37,32 @@
         "put_status": 200,
         "put_body": "",
         "content_length": 65536,
-        "checksum_sha256": "gZWUx4Up4dq8Q+tv7fdmYab5AT4M534+Ds8p3Tv+zz4=",
+        "checksum_sha256": "GzBdgU51mSEr90CwPFhdF//r+zK5cSbrmesF/keOh8M=",
         "checksum_round_trips": true
+      }
+    },
+    {
+      "gate": "storage_hippius_private",
+      "status": "passed",
+      "summary": "anonymous GET of the object returned 403, of the listing 403 (want 401/403)",
+      "details": {
+        "endpoint": "https://s3.hippius.com",
+        "region": "decentralized",
+        "bucket": "radiant-subnet",
+        "anonymous_object_status": 403,
+        "anonymous_list_status": 403
+      }
+    },
+    {
+      "gate": "storage_hippius_content_length",
+      "status": "passed",
+      "summary": "a body 1 KiB over the signed Content-Length returned 403 (want 4xx)",
+      "details": {
+        "endpoint": "https://s3.hippius.com",
+        "region": "decentralized",
+        "bucket": "radiant-subnet",
+        "oversize_status": 403,
+        "oversize_body": ""
       }
     },
     {
@@ -50,7 +74,7 @@
         "region": "decentralized",
         "bucket": "radiant-subnet",
         "second_put_status": 412,
-        "second_put_body": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<Error><Code>PreconditionFailed</Code><Message>At least one of the pre-conditions you specified did not hold</Message><Resource/><RequestId>18EBE854AC73A15B</RequestId><HostId>aGlwcGl1cy8xOEVCRTg1NEFDNzNBMTVC</HostId></Error>"
+        "second_put_body": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<Error><Code>PreconditionFailed</Code><Message>At least one of the pre-conditions you specified did not hold</Message><Resource/><RequestId>18EBEEAAFACF3ED4</RequestId><HostId>aGlwcGl1cy8xOEVCRUVBQUZBQ0YzRUQ0</HostId></Error>"
       }
     },
     {
@@ -62,7 +86,7 @@
         "region": "decentralized",
         "bucket": "radiant-subnet",
         "tampered_status": 400,
-        "tampered_body": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<Error><Code>BadDigest</Code><Message>The SHA256 you specified did not match the calculated checksum.</Message><Resource/><RequestId>18EBE857407A68F8</RequestId><HostId>aGlwcGl1cy8xOEVCRTg1NzQwN0E2OEY4</HostId></Error>",
+        "tampered_body": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<Error><Code>BadDigest</Code><Message>The SHA256 you specified did not match the calculated checksum.</Message><Resource/><RequestId>18EBEEAAEC5613E3</RequestId><HostId>aGlwcGl1cy8xOEVCRUVBQUVDNTYxM0Uz</HostId></Error>",
         "missing_header_status": 403,
         "missing_header_body": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<Error><Code>SignatureDoesNotMatch</Code><Message>The request signature we calculated does not match the signature you provided.</Message><AWSAccessKeyId>[REDACTED]</AWSAccessKeyId><StringToSign>[REDACTED]"
       }
