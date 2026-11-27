@@ -8,6 +8,13 @@ license = { text = "MIT" }
 dependencies = []
 
 [project.optional-dependencies]
+# Validator services (api, seed, migrations). The Docker image installs this.
+validator = [
+    "psycopg[binary]>=3.2",
+    "fastapi>=0.115",
+    "uvicorn>=0.32",
+    "boto3>=1.35",
+]
 # R0 feasibility probes. Each probe imports only what it needs, so a missing
 # extra blocks that one gate instead of the whole run.
 r0 = [
