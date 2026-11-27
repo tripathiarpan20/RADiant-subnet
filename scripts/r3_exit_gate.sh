@@ -1,0 +1,112 @@
+#!/usr/bin/env bash
+# R3 exit gate on testnet (netuid 292): a paid submission is ingested exactly
+# once, and reused, underpaid, wrong-recipient and foreign-locator proofs are
+# rejected.
+#
+#   scripts/r3_exit_gate.sh [--wallet bruh_dev_coldkey] [--hotkey bruh_dev_hotkey_3] [--keep] [--stack-only]
+#
+# Run it in your own terminal: it pays the campaign fee (0.01 testTAO) from
+# the wallet's coldkey, so it asks for the coldkey password once. It brings up
+# its own stack (project radiant-r3gate, random passwords and ports) with a
+# local MinIO, and removes it afterwards unless --keep.
+set -euo pipefail
+cd "$(dirname "$0")/.."
+REPO=$(pwd)
+WALLET=bruh_dev_coldkey; HOTKEY=bruh_dev_hotkey_3; KEEP=0; STACK_ONLY=0
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --wallet) WALLET="$2"; shift 2 ;;
+    --hotkey) HOTKEY="$2"; shift 2 ;;
+    --keep) KEEP=1; shift ;;
+    --stack-only) STACK_ONLY=1; shift ;;
+    *) echo "unknown option $1"; exit 2 ;;
+  esac
+done
+pass() { printf '  \033[32mpass\033[0m  %s\n' "$*"; }
+fail() { printf '  \033[31mFAIL\033[0m  %s\n' "$*"; exit 1; }
+
+if [[ $STACK_ONLY -eq 0 ]] && grep -q '^HF_REPO_ID=torchxrayvision/' radiant_sdk/reference_miner/.env.template; then
+  fail "the reference miner still points at the pickle weights; publish the safetensors copy first:
+    HF_TOKEN=<write token> uv run --extra sdk --extra r0-models python scripts/publish_reference_weights.py --out /tmp/ref-weights --repo <org>/densenet121-res224-all-safetensors
+  then set HF_REPO_ID and HF_REVISION in radiant_sdk/reference_miner/.env.template"
+fi
+
+PROJECT=radiant-r3gate
+W=$(mktemp -d -t radiant-r3gate.XXXXXX)
+rand() { python3 -c 'import secrets; print(secrets.token_hex(20))'; }
+port() { python3 -c 'import socket; s=socket.socket(); s.bind(("127.0.0.1",0)); print(s.getsockname()[1])'; }
+HTTP_PORT=$(port); MINIO_PORT=$(port)
+RECIPIENT=$(uv run --extra sdk python -c 'from radiant_sdk.submit import TRUSTED_FEE_RECIPIENTS as t; print(t["test"])')
+cat > "$W/env" <<EOF
+POSTGRES_PASSWORD=$(rand)
+RADIANT_DB_READONLY_PASSWORD=$(rand)
+MINIO_ROOT_USER=radiant
+MINIO_ROOT_PASSWORD=$(rand)
+RADIANT_HTTP_BIND=127.0.0.1:${HTTP_PORT}
+RADIANT_HTTPS_BIND=127.0.0.1:$(port)
+RADIANT_NETWORK=test
+RADIANT_NETUID=292
+RADIANT_FEE_RECIPIENT=${RECIPIENT}
+RADIANT_FEE_TAO=0.01
+RADIANT_POLL_INTERVAL_S=12
+RADIANT_S3_PRESIGN_ENDPOINT_URL=http://127.0.0.1:${MINIO_PORT}
+RADIANT_SEED_MANIFEST=campaign/fixtures/testnet-cxr-01.json
+EOF
+cat > "$W/override.yml" <<EOF
+services:
+  minio:
+    ports: !override
+      - "127.0.0.1:${MINIO_PORT}:9000"
+  adminer:
+    ports: !override
+      - "127.0.0.1:$(port):8080"
+EOF
+dc() { docker compose --progress quiet -p "$PROJECT" --env-file "$W/env" -f docker-compose.yml -f "$W/override.yml" "$@"; }
+cleanup() { if [[ $KEEP -eq 0 ]]; then dc down -v --remove-orphans >/dev/null 2>&1 || true; rm -rf "$W"; fi; }
+trap cleanup EXIT
+API="http://127.0.0.1:${HTTP_PORT}"
+
+echo "1. stack up, campaign open, fee 0.01 testTAO to ${RECIPIENT:0:8}…"
+dc down -v --remove-orphans >/dev/null 2>&1 || true
+dc up -d --build --wait >/dev/null
+dc run --rm --no-deps init python -m campaign.set_status testnet-cxr-01 open >/dev/null
+curl -fsS "$API/v1/info" | grep -q '"netuid":292' || fail "/v1/info does not report netuid 292"
+pass "API at $API on test/292"
+if [[ $STACK_ONLY -eq 1 ]]; then
+  dc run --rm --no-deps watcher python -m worker.watcher --once > "$W/scan.json" || fail "watcher scan failed"
+  pass "watcher scanned netuid 292: $(python3 -c 'import json,sys; print(len(json.load(open(sys.argv[1]))))' "$W/scan.json") RADiant commitments on chain"
+  echo "stack-only check passed."; exit 0
+fi
+
+echo "2. reference miner: prepare and validate (Modal)"
+cp -r radiant_sdk/reference_miner "$W/miner" && cp "$W/miner/.env.template" "$W/miner/.env"
+cat > "$W/miner/miner.env" <<EOF
+RADIANT_API_URL=$API
+RADIANT_NETWORK=test
+RADIANT_NETUID=292
+WALLET_NAME=$WALLET
+WALLET_HOTKEY=$HOTKEY
+EOF
+sdk() { (cd "$W/miner" && uv run --project "$REPO" --extra sdk radiant-sdk "$@"); }
+sdk prepare . --out build >/dev/null
+sdk validate build/solution.zip --campaign testnet-cxr-01 > "$W/validate.json" 2> "$W/validate.log" \
+  || { tail -25 "$W/validate.log"; fail "validate did not pass"; }
+pass "validate passed; receipt written"
+
+echo "3. submit: upload, pay (you will be asked to confirm and for the coldkey password), commit"
+sdk submit build/solution.zip --campaign testnet-cxr-01 \
+  | tee "$W/submit.json"
+SHA=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["sha256"])' "$W/submit.json")
+pass "committed $SHA"
+
+echo "4. watcher ingests it"
+for i in $(seq 1 50); do
+  if curl -fsS "$API/v1/submissions/$SHA" 2>/dev/null | grep -q '"state": *"queued"'; then break; fi
+  sleep 12
+  [[ $i -eq 50 ]] && { dc logs --tail 40 watcher; fail "not ingested after 10 minutes"; }
+done
+pass "queued by the watcher"
+
+echo "5. exactly once, and bad proofs rejected (using the real payment)"
+dc run --rm --no-deps -v "$(pwd)/scripts:/app/scripts:ro" watcher python scripts/r3_checks.py "$SHA"
+echo "R3 exit gate passed."

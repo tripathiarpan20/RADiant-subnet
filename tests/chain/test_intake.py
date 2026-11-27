@@ -264,3 +264,29 @@ def test_presigned_put_is_bound_to_checksum_and_key(settings):
                               size_bytes=len(data), upload_id=p.object_key.rsplit("/", 1)[1][:-4], expires_in=300)
     assert again.already_uploaded
     _ = json  # keep import for debugging dumps
+
+
+def test_upload_api_presigns_for_a_signed_request(settings):
+    from fastapi.testclient import TestClient
+
+    from api.server import app
+
+    data = solution_zip("api")
+    sha, code = hashes(data)
+    fields = {"campaign_id": "testnet-cxr-01", "hotkey": MINER.ss58_address, "sha256": sha, "code_sha256": code,
+              "size_bytes": len(data), "upload_id": str(uuid.uuid4()), "expires_at": int(time.time()) + 120,
+              "network": "test", "netuid": 292}
+    client = TestClient(app)
+    body = {**fields, "signature": MINER.sign(upload_message(fields)).hex()}
+    r = client.post("/v1/uploads/solution", json=body)
+    assert r.status_code == 200, r.text
+    p = r.json()
+    import requests
+
+    assert requests.put(p["upload_url"], data=data, headers=p["required_headers"], timeout=10).status_code == 200
+    forged = {**body, "signature": OTHER.sign(upload_message(fields)).hex()}
+    assert client.post("/v1/uploads/solution", json=forged).status_code == 403
+    big = {**fields, "size_bytes": 11_000_000}
+    assert client.post("/v1/uploads/solution",
+                       json={**big, "signature": MINER.sign(upload_message(big)).hex()}).status_code == 413
+    assert client.get(f"/v1/submissions/{sha}").status_code == 404
