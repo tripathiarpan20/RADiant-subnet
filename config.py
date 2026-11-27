@@ -23,7 +23,7 @@ def _int(env: Mapping[str, str], key: str, default: int) -> int:
 
 @dataclass(frozen=True)
 class Settings:
-    # chain
+    # chain. Fees are paid in the TAO of this network: testTAO on "test".
     network: str
     netuid: int
     # Postgres
@@ -53,7 +53,7 @@ class Settings:
         e = os.environ if env is None else env
         s = cls(
             network=e.get("RADIANT_NETWORK", "test"),
-            netuid=_int(e, "RADIANT_NETUID", 0),
+            netuid=_int(e, "RADIANT_NETUID", 292 if e.get("RADIANT_NETWORK", "test") == "test" else 0),
             database_url=e.get("RADIANT_DATABASE_URL", ""),
             readonly_role=e.get("RADIANT_DB_READONLY_ROLE", "radiant_readonly"),
             readonly_password=e.get("RADIANT_DB_READONLY_PASSWORD", ""),
@@ -73,6 +73,8 @@ class Settings:
         )
         if s.network not in ("local", "test", "finney"):
             raise ValueError("RADIANT_NETWORK must be local, test or finney")
+        if s.network != "local" and s.netuid <= 0:
+            raise ValueError("RADIANT_NETUID must be set for test and finney (testnet RADiant is 292)")
         if s.max_rounds_per_24h < 1:
             raise ValueError("MAX_ROUNDS_PER_24H must be at least 1")
         return s

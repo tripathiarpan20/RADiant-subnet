@@ -19,6 +19,8 @@ COPY config.py ./
 COPY api ./api
 COPY campaign ./campaign
 COPY db ./db
+COPY gate ./gate
+COPY radiant_sdk ./radiant_sdk
 COPY storage ./storage
 
 RUN useradd --system --uid 10001 --no-create-home radiant

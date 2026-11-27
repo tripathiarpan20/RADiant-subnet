@@ -2,6 +2,7 @@
 
 R1 routes:
     GET /health                    database reachable, migrations applied
+    GET /v1/info                   network, netuid and supported SDK versions
     GET /v1/campaigns              every non-draft campaign (drafts with ?include_drafts=1)
     GET /v1/campaigns/{id}         manifest, hash, fee history, reveal policy
 
@@ -48,6 +49,18 @@ def health(response: Response) -> dict[str, Any]:
     except Exception as exc:
         raise HTTPException(503, f"database unavailable: {type(exc).__name__}") from None
     return {"ok": True, "migrations": n}
+
+
+@app.get("/v1/info")
+def info(response: Response) -> dict[str, Any]:
+    """Which chain this validator runs on, so the SDK can refuse to pay on the wrong one (R3)."""
+    import config
+    from radiant_sdk import SDK_VERSION
+
+    response.headers["Cache-Control"] = "no-store"
+    s = config.settings()
+    return {"network": s.network, "netuid": s.netuid, "sdk_versions": [SDK_VERSION], "fee_currency":
+            "testTAO" if s.network == "test" else "TAO"}
 
 
 @app.get("/v1/campaigns")
