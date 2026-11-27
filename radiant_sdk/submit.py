@@ -77,6 +77,14 @@ def _payment_ref(result: Any) -> tuple[int, int] | None:
     return (int(block), int(index)) if block.isdigit() and index.isdigit() else None
 
 
+def active_fee_at(history: list[dict[str, Any]], block: int) -> dict[str, str]:
+    """Return {amount_tao, recipient} in force at ``block`` (never a future scheduled change)."""
+    entry = next((e for e in reversed(history) if e["effective_from_block"] <= block), None)
+    if entry is None:
+        raise ValueError(f"no fee is in force at block {block}")
+    return {"amount_tao": entry["amount_tao"], "recipient": entry["recipient"]}
+
+
 def _check_fee_at_block(base: str, campaign_id: str, block: int, paid: dict[str, str]) -> None:
     """The fee in force at the payment's block must be no more than what was paid, to the same recipient.
 
@@ -84,9 +92,7 @@ def _check_fee_at_block(base: str, campaign_id: str, block: int, paid: dict[str,
     underpaid proof would only be rejected, so stop before committing.
     """
     history = fetch_campaign(campaign_id, api_url=base)["submission_fee_history"]
-    entry = next((e for e in reversed(history) if e["effective_from_block"] <= block), None)
-    if entry is None:
-        raise ValueError(f"no fee is in force at block {block}")
+    entry = active_fee_at(history, block)
     if entry["recipient"] != paid["recipient"] or Decimal(entry["amount_tao"]) > Decimal(paid["amount_tao"]):
         raise ValueError(f"payment at block {block} does not meet the fee in force then ({entry['amount_tao']} to "
                          f"{entry['recipient']}). Nothing was committed; don't reuse this payment for this campaign.")
@@ -96,6 +102,9 @@ def submit(zip_path: Path, campaign_id: str, *, api_url: str | None, network: st
            wallet_hotkey: str, yes: bool = False, dry_run: bool = False, max_fee_tao: str | None = None,
            payment_block: int | None = None, payment_tx: int | None = None,
            wait_s: float = 0) -> dict[str, Any]:
+    if (payment_block is None) != (payment_tx is None):
+        raise ValueError("--payment-block and --payment-tx must be provided together")
+
     import bittensor as bt
 
     from .checks import code_sha256 as code_hash
@@ -112,7 +121,9 @@ def submit(zip_path: Path, campaign_id: str, *, api_url: str | None, network: st
     if (info["network"], info["netuid"]) != (network, netuid):
         raise ValueError(f"validator runs {info['network']}/{info['netuid']} but miner.env says {network}/{netuid}; "
                          "refusing to pay on the wrong chain")
-    fee = campaign["submission_fee"]
+    subtensor = bt.Subtensor(network=network)
+    current_block = int(subtensor.block)
+    fee = active_fee_at(campaign["submission_fee_history"], current_block)
     if fee["recipient"] not in trusted_recipients(network):
         raise ValueError(f"campaign {campaign_id} wants its fee paid to {fee['recipient']}, which you don't trust on "
                          f"{network}. If that is the subnet owner's address, add it to RADIANT_TRUSTED_FEE_RECIPIENTS "
@@ -121,7 +132,8 @@ def submit(zip_path: Path, campaign_id: str, *, api_url: str | None, network: st
     if max_fee_tao is not None and fee_rao > int(Decimal(max_fee_tao) * RAO_PER_TAO) and payment_block is None:
         raise ValueError(f"campaign fee {fee['amount_tao']} is above --max-fee-tao {max_fee_tao}")
     currency = info.get("fee_currency", "TAO")
-    say(f"campaign {campaign_id}: fee {fee['amount_tao']} {currency} to {fee['recipient']} on {network}/{netuid}")
+    say(f"campaign {campaign_id}: fee {fee['amount_tao']} {currency} to {fee['recipient']} on {network}/{netuid} "
+        f"(at block {current_block})")
 
     data = zip_path.read_bytes()
     sha = "sha256:" + hashlib.sha256(data).hexdigest()
@@ -135,7 +147,6 @@ def submit(zip_path: Path, campaign_id: str, *, api_url: str | None, network: st
     fields = {"campaign_id": campaign_id, "hotkey": hotkey, "sha256": sha, "code_sha256": code,
               "size_bytes": len(data), "upload_id": upload_id, "expires_at": int(time.time()) + 240,
               "network": network, "netuid": netuid}
-    subtensor = bt.Subtensor(network=network)
     from .chainview import registered
 
     if not registered(network, netuid, hotkey):
@@ -162,10 +173,12 @@ def submit(zip_path: Path, campaign_id: str, *, api_url: str | None, network: st
 
     if payment_block is not None:
         block, index = payment_block, payment_tx
-        say(f"reusing payment {block}-{index}")
-        _check_fee_at_block(base, campaign_id, block, fee)
+        hist_fee = active_fee_at(fetch_campaign(campaign_id, api_url=base)["submission_fee_history"], block)
+        if hist_fee["recipient"] not in trusted_recipients(network):
+            raise ValueError(f"fee recipient at payment block {block} ({hist_fee['recipient']}) is not trusted")
+        say(f"reusing payment {block}-{index} (fee at block {block}: {hist_fee['amount_tao']} {currency})")
     elif fee_rao > 0:
-        fresh = fetch_campaign(campaign_id, api_url=base)["submission_fee"]  # the fee may have changed meanwhile
+        fresh = active_fee_at(fetch_campaign(campaign_id, api_url=base)["submission_fee_history"], int(subtensor.block))
         if fresh != fee:
             raise ValueError(f"the campaign fee changed to {fresh['amount_tao']} {currency} to {fresh['recipient']} "
                              "while uploading; rerun submit to see and confirm the new fee (nothing was paid)")

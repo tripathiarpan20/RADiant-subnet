@@ -33,6 +33,8 @@ def _miner_env(path: str | None) -> None:
         line = line.strip()
         if line and not line.startswith("#") and "=" in line:
             k, v = (s.strip() for s in line.split("=", 1))
+            if len(v) >= 2 and v[0] == v[-1] and v[0] in "'\"":
+                v = v[1:-1]
             os.environ.setdefault(k, v)
 
 
@@ -79,9 +81,13 @@ def cmd_submit(args) -> int:
     from .submit import submit
 
     try:
+        network = args.network or os.environ.get("RADIANT_NETWORK", "test")
+        raw_netuid = args.netuid or os.environ.get("RADIANT_NETUID", "292" if network == "test" else "")
+        if not raw_netuid:
+            raise ValueError(f"--netuid or RADIANT_NETUID must be set for network {network!r}")
+        netuid = int(raw_netuid)
         result = submit(Path(args.zip), args.campaign, api_url=args.api_url,
-                        network=args.network or os.environ.get("RADIANT_NETWORK", "test"),
-                        netuid=int(args.netuid or os.environ.get("RADIANT_NETUID", "292")),
+                        network=network, netuid=netuid,
                         wallet_name=args.wallet_name or os.environ.get("WALLET_NAME", "default"),
                         wallet_hotkey=args.wallet_hotkey or os.environ.get("WALLET_HOTKEY", "default"),
                         yes=args.yes, dry_run=args.dry_run, max_fee_tao=args.max_fee_tao,
