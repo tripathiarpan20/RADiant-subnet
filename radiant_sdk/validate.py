@@ -148,6 +148,19 @@ def solution_image(modal, code_dir: Path, weights_dir: Path, lock_text: str):
     )
 
 
+MODAL_SETUP_HINT = (
+    "Modal isn't set up on this machine. Run `modal setup` (opens a browser to log in), or set "
+    "MODAL_TOKEN_ID and MODAL_TOKEN_SECRET from https://modal.com/settings/tokens. validate runs one short "
+    "sandbox on your own Modal account, usually a few cents. `--static-only` skips Modal.")
+
+
+def require_modal_credentials() -> None:
+    from modal.config import config
+
+    if not (config.get("token_id") and config.get("token_secret")):
+        raise ValueError(MODAL_SETUP_HINT)
+
+
 def _build_with_deadline(image, app, seconds: float):
     box: dict[str, Any] = {}
 
@@ -338,6 +351,7 @@ def validate(zip_path: Path, opts: ValidateOptions) -> dict[str, Any]:
 
     import modal
 
+    require_modal_credentials()
     files = read_zip(data, max_zip_mb=manifest["limits"]["max_solution_zip_mb"],
                      max_unzipped_mb=manifest["limits"]["max_solution_unzipped_mb"])
     with tempfile.TemporaryDirectory(prefix="radiant-sdk-") as tmp:
@@ -348,8 +362,11 @@ def validate(zip_path: Path, opts: ValidateOptions) -> dict[str, Any]:
             p = code_dir / name
             p.parent.mkdir(parents=True, exist_ok=True)
             p.write_bytes(content)
-        app = modal.App.lookup("radiant-sdk-validate", create_if_missing=True,
-                               environment_name=opts.modal_environment)
+        try:
+            app = modal.App.lookup("radiant-sdk-validate", create_if_missing=True,
+                                   environment_name=opts.modal_environment)
+        except modal.exception.AuthError:
+            raise ValueError("Modal rejected your token. " + MODAL_SETUP_HINT) from None
         image = solution_image(modal, code_dir, weights_dir, files["requirements.lock"].decode())
         log("build", f"building the image (limit {manifest['limits']['modal_build_timeout_s']}s); "
                      "cached layers are reused")

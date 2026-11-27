@@ -5,7 +5,12 @@ v1 contract. It is a working starting point, not a competitive entry: labels
 DenseNet has no output for, such as tuberculosis and silicosis, always get
 0.0.
 
+You need a Modal account: `validate` builds your image and runs a short
+offline qualification there, usually a few cents. Log in once with
+`modal setup`, or set `MODAL_TOKEN_ID` and `MODAL_TOKEN_SECRET`.
+
 ```bash
+modal setup
 cp -r "$(python -c 'import radiant_sdk, pathlib; print(pathlib.Path(radiant_sdk.__file__).parent / "reference_miner")')" my-miner
 cd my-miner
 cp .env.template .env

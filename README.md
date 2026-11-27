@@ -35,6 +35,7 @@ curl -s 'localhost:8080/v1/campaigns?include_drafts=1'
 
 ```bash
 pip install '.[sdk]'          # or: uv sync --extra sdk
+modal setup                   # once: log in to your Modal account; validate runs one short sandbox there
 cp -r radiant_sdk/reference_miner my-miner && cp my-miner/.env.template my-miner/.env
 radiant-sdk prepare my-miner --out build
 radiant-sdk validate build/solution.zip --campaign testnet-cxr-01 --api-url http://localhost:8080

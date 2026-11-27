@@ -141,3 +141,13 @@ def test_validate_static_only_cli(miner_dir, tmp_path, campaign_file, capsys):
     code = cli.main(["validate", p.zip_path, "--campaign", "testnet-cxr-01", "--manifest", str(campaign_file),
                      "--static-only"])
     assert code == 0 and '"static_passed"' in capsys.readouterr().out
+
+
+def test_validate_explains_missing_modal_credentials(monkeypatch):
+    from modal.config import config
+
+    from radiant_sdk import validate as v
+
+    monkeypatch.setattr(config, "get", lambda key, *a, **k: None)
+    with pytest.raises(ValueError, match="modal setup"):
+        v.require_modal_credentials()
