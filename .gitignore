@@ -12,3 +12,7 @@ __pycache__/
 .r0_scratch/
 # Local miner working copies (R4 adds a top-level build/ package, so don't ignore build/)
 /my-miner/
+# radiant-sdk prepare/validate output, wherever it lands
+solution.zip
+prepare.json
+receipt.json
