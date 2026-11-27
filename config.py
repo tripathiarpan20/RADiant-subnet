@@ -46,6 +46,7 @@ class Settings:
     # chain intake (R3)
     poll_interval_s: int
     fee_exempt_hotkeys: frozenset[str]
+    max_payment_age_blocks: int
     # DataHive (R5)
     datahive_api_base: str
     datahive_api_key: str
@@ -84,6 +85,7 @@ class Settings:
             poll_interval_s=_int(e, "RADIANT_POLL_INTERVAL_S", 30),
             fee_exempt_hotkeys=frozenset(h.strip() for h in e.get("RADIANT_FEE_EXEMPT_HOTKEYS", "").split(",")
                                          if h.strip()),
+            max_payment_age_blocks=_int(e, "RADIANT_MAX_PAYMENT_AGE_BLOCKS", 7200),
             datahive_api_base=e.get("DATAHIVE_API_BASE", ""),
             datahive_api_key=e.get("DATAHIVE_API_KEY", ""),
             max_rounds_per_24h=_int(e, "MAX_ROUNDS_PER_24H", 3),
@@ -102,6 +104,8 @@ class Settings:
             raise ValueError("RADIANT_NETUID must be set for test and finney (testnet RADiant is 292)")
         if s.max_rounds_per_24h < 1:
             raise ValueError("MAX_ROUNDS_PER_24H must be at least 1")
+        if s.max_payment_age_blocks < 0:
+            raise ValueError("RADIANT_MAX_PAYMENT_AGE_BLOCKS must be non-negative")
         return s
 
     def require_database(self) -> str:

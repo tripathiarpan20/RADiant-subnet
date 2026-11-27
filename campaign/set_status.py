@@ -22,10 +22,12 @@ def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(prog="python -m campaign.set_status")
     p.add_argument("campaign_id")
     p.add_argument("status", choices=("draft", "open", "closed", "archived"))
+    p.add_argument("--at-block", type=int, default=None,
+                   help="chain block when opening (rejects payment proofs from earlier blocks)")
     args = p.parse_args(argv)
     try:
         with connect() as conn:
-            row = store.set_status(conn, args.campaign_id, args.status)
+            row = store.set_status(conn, args.campaign_id, args.status, opened_at_block=args.at_block)
     except (ValueError, psycopg.errors.RaiseException) as exc:
         print(f"set_status: {str(exc).splitlines()[0]}", file=sys.stderr)
         return 2

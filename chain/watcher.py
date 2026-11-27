@@ -48,21 +48,31 @@ class IngestResult:
     reason: str  # "ingested", "duplicate", or a rejection code
 
 
-def check_fee(com: SolutionCommitment, history: list, fetch_block: BlockFetcher | None, consumed: bool) -> PaymentCheck:
+def check_fee(com: SolutionCommitment, history: list, fetch_block: BlockFetcher | None, consumed: bool, *,
+              max_payment_age_blocks: int = 7200, min_payment_block: int = 0) -> PaymentCheck:
     if com.payment_block is None or com.payment_tx is None:
         return PaymentCheck.reject("payment_proof_missing")
     if com.payment_block > com.commit_block:
         return PaymentCheck.reject("payment_after_commitment")
+    if min_payment_block > 0 and com.payment_block < min_payment_block:
+        return PaymentCheck.reject("payment_before_campaign_open")
+    if max_payment_age_blocks > 0 and (com.commit_block - com.payment_block) > max_payment_age_blocks:
+        return PaymentCheck.reject("payment_too_old")
     if consumed:
         return PaymentCheck.reject("payment_ref_already_used")
     fee = fee_at_block(history, com.payment_block)
+    fee_commit = fee_at_block(history, com.commit_block)
+    min_rao = submission_fee_rao(fee)
+    # A transfer from a zero-fee era cannot satisfy a campaign that now charges a fee.
+    if min_rao == 0 and submission_fee_rao(fee_commit) > 0:
+        min_rao = submission_fee_rao(fee_commit)
     if fetch_block is None:
         return PaymentCheck.reject("payment_no_chain_access")
     view = fetch_block(com.payment_block)
     if view is None:
         return PaymentCheck.reject("payment_block_unavailable")
     return verify_payment(extrinsics=view.extrinsics, events=view.events, extrinsic_index=com.payment_tx,
-                          recipient=fee["recipient"], min_amount_rao=submission_fee_rao(fee),
+                          recipient=fee["recipient"], min_amount_rao=min_rao,
                           hotkey=com.hotkey, coldkey=com.coldkey)
 
 
@@ -100,7 +110,9 @@ def ingest(conn, com: SolutionCommitment, *, fetch_block: BlockFetcher | None, f
         if fee_due or com.payment_block is not None:
             consumed = com.payment_block is not None and store.payment_ref_used(conn, com.payment_block,
                                                                                 com.payment_tx)
-            check = check_fee(com, history, fetch_block, consumed)
+            check = check_fee(com, history, fetch_block, consumed,
+                              max_payment_age_blocks=s.max_payment_age_blocks,
+                              min_payment_block=campaign.get("opened_at_block") or 0)
             if not check.ok:
                 return reject(check.reason)
 

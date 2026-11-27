@@ -11,7 +11,7 @@ from .fees import genesis_history
 from .manifest import CampaignManifest, compute_manifest_hash
 
 COLUMNS = "id, title, status, manifest_version, manifest, manifest_hash, submission_fee_history, visibility, " \
-          "created_at, updated_at"
+          "opened_at_block, created_at, updated_at"
 
 
 def get_campaign(conn, campaign_id: str) -> dict[str, Any] | None:
@@ -46,9 +46,14 @@ def replace_draft_manifest(conn, m: CampaignManifest) -> dict[str, Any]:
     return row
 
 
-def set_status(conn, campaign_id: str, status: str) -> dict[str, Any]:
-    row = conn.execute(f"UPDATE campaigns SET status = %s WHERE id = %s RETURNING {COLUMNS}",
-                       (status, campaign_id)).fetchone()
+def set_status(conn, campaign_id: str, status: str, *, opened_at_block: int | None = None) -> dict[str, Any]:
+    if status == "open" and opened_at_block is not None:
+        row = conn.execute(
+            f"UPDATE campaigns SET status = %s, opened_at_block = COALESCE(opened_at_block, %s) "
+            f"WHERE id = %s RETURNING {COLUMNS}", (status, opened_at_block, campaign_id)).fetchone()
+    else:
+        row = conn.execute(f"UPDATE campaigns SET status = %s WHERE id = %s RETURNING {COLUMNS}",
+                           (status, campaign_id)).fetchone()
     if row is None:
         raise ValueError(f"no campaign {campaign_id}")
     return row
