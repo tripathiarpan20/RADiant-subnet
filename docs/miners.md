@@ -80,7 +80,10 @@ src/                    optional extra .py / .json / .yaml / .txt / .md files
   (`HF_TOKEN_WRITE_SCOPE`). Public weights need no token at all.
 - **The base image** for SDK 1.0.0 has Python 3.12, torch 2.5.1,
   torchvision 0.20.1, numpy 2.2.6, pillow 11.3.0 and safetensors 0.8.0. List
-  anything else in `requirements.in` and run `radiant-sdk lock`.
+  anything else in `requirements.in` and run `radiant-sdk lock`. Extras
+  install from binary wheels only (`--only-binary=:all:`), so a package that
+  ships only a source distribution is refused, and no `.pth` startup hook may
+  be installed. `radiant-subnet` and `radiant-sdk` themselves can't be locked.
 - **Your code runs offline.** No network or secrets; network and process
   modules (`socket`, `requests`, `subprocess`, ...) can't be imported.
 - **Inputs are raw.** Each image is a 2-D `uint16` array (raw pixels,

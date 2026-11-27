@@ -82,4 +82,4 @@ Every phase keeps this current. Anything deferred to launch goes here.
 - [x] A zip whose code does not hash to its commitment is deleted on rejection (intake no longer inflates zips, so these reach g1 with `.env` still inside).
 - [ ] R6: compute round scores on the validator from the raw predictions. The harness's protocol token is readable by in-process miner code (`/proc/self/cmdline`, module globals), so a verdict or marker printed inside the sandbox is a hint, never evidence. g8 qualification is a smoke test and accepts this.
 - [ ] R8: clean up worker scratch for submissions left in terminal `infra_failed` (kept so `worker.admin requeue` can resume without the miner's HF token; it can hold the original zip and weights) after a retention window.
-- [ ] Before outside miners join: say in docs/miners.md that the lock installs wheels only (`--only-binary=:all:`), so sdist-only dependencies are refused.
+- [x] docs/miners.md says extras install from wheels only (`--only-binary=:all:`), so sdist-only dependencies are refused.
