@@ -1,6 +1,6 @@
 {
   "probe": "models",
-  "ran_at": "2026-11-27T13:36:38+00:00",
+  "ran_at": "2026-11-27T13:47:48+00:00",
   "host": {
     "system": "Darwin",
     "machine": "arm64",
@@ -16,9 +16,9 @@
         "weights": "densenet121-res224-all",
         "device": "cpu",
         "images": 20,
-        "load_model_s": 0.17,
-        "preprocess_s": 1.12,
-        "inference_s": 1.37,
+        "load_model_s": 0.2,
+        "preprocess_s": 1.23,
+        "inference_s": 1.68,
         "heads": [
           "Atelectasis",
           "Consolidation",

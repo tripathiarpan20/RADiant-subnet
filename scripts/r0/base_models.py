@@ -26,6 +26,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import sys
 import time
 from pathlib import Path
 from typing import Any, Iterable
@@ -103,17 +104,37 @@ def load_dir(images: Path, labels: Path) -> list[tuple[str, bytes, set[str]]]:
     return out
 
 
-def load_demo() -> list[tuple[str, bytes, set[str]]]:
+def _progress(msg: str) -> None:
+    print(msg, file=sys.stderr, flush=True)
+
+
+def load_demo(workers: int = 8) -> list[tuple[str, bytes, set[str]]]:
+    """Fetch every demo image and its findings, in parallel with progress.
+
+    Demo images are full-size 16-bit PNGs (about 8 MB each), so a sequential
+    fetch of all 20 takes a minute or more with no output.
+    """
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+
     from .datahive import DataHiveClient
 
-    client = DataHiveClient(os.environ["DATAHIVE_DEMO_API_BASE"], os.environ["DATAHIVE_DEMO_API_KEY"], mode="demo")
-    out = []
-    for entry in client.list_all():
-        name = entry["filename"]
-        data, _, _, _ = client.fetch_image(name)
-        meta = client.metadata(name)
-        out.append((name, data, positives_from_findings(meta.get("findings", []))))
-    return out
+    base, key = os.environ["DATAHIVE_DEMO_API_BASE"], os.environ["DATAHIVE_DEMO_API_KEY"]
+    names = [e["filename"] for e in DataHiveClient(base, key, mode="demo").list_all()]
+    _progress(f"demo API lists {len(names)} images; fetching with {workers} workers")
+
+    def fetch(name: str) -> tuple[str, bytes, set[str]]:
+        c = DataHiveClient(base, key, mode="demo", timeout=120)  # a session per thread
+        data, _, _, _ = c.fetch_image(name)
+        return name, data, positives_from_findings(c.metadata(name).get("findings", []))
+
+    got: dict[str, tuple[str, bytes, set[str]]] = {}
+    with ThreadPoolExecutor(max_workers=workers) as pool:
+        futures = [pool.submit(fetch, n) for n in names]
+        for i, f in enumerate(as_completed(futures), 1):
+            name, data, pos = f.result()
+            got[name] = (name, data, pos)
+            _progress(f"  {i}/{len(names)} {name} ({len(data) / 1e6:.1f} MB)")
+    return [got[n] for n in names]
 
 
 # ── model ───────────────────────────────────────────────────────────────────
@@ -164,6 +185,7 @@ def score_densenet(samples: list[tuple[str, bytes, set[str]]], device: str) -> G
     import torch
     import torchxrayvision as xrv
 
+    _progress(f"scoring {len(samples)} images with {DENSENET_WEIGHTS} on {device}")
     t0 = time.monotonic()
     model = xrv.models.DenseNet(weights=DENSENET_WEIGHTS).eval().to(device)
     load_s = time.monotonic() - t0
