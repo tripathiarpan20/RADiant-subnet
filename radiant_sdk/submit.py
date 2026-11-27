@@ -34,7 +34,7 @@ from .validate import _check_url, check_receipt, fetch_campaign
 # Fee recipients this SDK will pay, per network. A campaign naming anyone
 # else is refused. Mainnet's is set at launch (TODO.md).
 TRUSTED_FEE_RECIPIENTS = {
-    "test": "5FRUjvY1AxpK6YxYxTLHjHcEwwYfb4Ah29LFQ7vGbLqFmJLo",
+    "test": "5GYfPfFRQPaLytjCyT78X769ZU9xm5tL43dN11sknTiZx34a",  # owner coldkey (rumayao_coldkey), 27 Nov
     "finney": None,
 }
 RAO_PER_TAO = Decimal(1_000_000_000)

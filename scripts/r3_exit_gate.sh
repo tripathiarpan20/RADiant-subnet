@@ -3,22 +3,25 @@
 # once, and reused, underpaid, wrong-recipient and foreign-locator proofs are
 # rejected.
 #
-#   scripts/r3_exit_gate.sh [--wallet bruh_dev_coldkey] [--hotkey bruh_dev_hotkey_3] [--keep] [--stack-only]
+#   scripts/r3_exit_gate.sh [--wallet bruh_dev_coldkey] [--hotkey bruh_dev_hotkey_3] [--storage hippius|minio]
+#                           [--keep] [--stack-only]
 #
 # Run it in your own terminal: it pays the campaign fee (0.01 testTAO) from
 # the wallet's coldkey, so it asks for the coldkey password once. It brings up
-# its own stack (project radiant-r3gate, random passwords and ports) with a
-# local MinIO, and removes it afterwards unless --keep.
+# its own stack (project radiant-r3gate, random passwords and ports). Uploads
+# go to the Hippius bucket from .env (prefix radiant-r3gate/) by default, or to
+# the stack's own MinIO with --storage minio. Removes the stack unless --keep.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 REPO=$(pwd)
-WALLET=bruh_dev_coldkey; HOTKEY=bruh_dev_hotkey_3; KEEP=0; STACK_ONLY=0
+WALLET=bruh_dev_coldkey; HOTKEY=bruh_dev_hotkey_3; KEEP=0; STACK_ONLY=0; STORAGE=hippius
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --wallet) WALLET="$2"; shift 2 ;;
     --hotkey) HOTKEY="$2"; shift 2 ;;
     --keep) KEEP=1; shift ;;
     --stack-only) STACK_ONLY=1; shift ;;
+    --storage) STORAGE="$2"; shift 2 ;;
     *) echo "unknown option $1"; exit 2 ;;
   esac
 done
@@ -52,6 +55,18 @@ RADIANT_POLL_INTERVAL_S=12
 RADIANT_S3_PRESIGN_ENDPOINT_URL=http://127.0.0.1:${MINIO_PORT}
 RADIANT_SEED_MANIFEST=campaign/fixtures/testnet-cxr-01.json
 EOF
+if [[ "$STORAGE" == "hippius" ]]; then
+  # The bucket the storage probe passed on (R0_HIPPIUS_S3_* in .env), under its own prefix.
+  ( set -a; source .env; set +a
+    echo "RADIANT_S3_ENDPOINT_URL=$R0_HIPPIUS_S3_ENDPOINT"
+    echo "RADIANT_S3_PRESIGN_ENDPOINT_URL=$R0_HIPPIUS_S3_ENDPOINT"
+    echo "RADIANT_S3_REGION=$R0_HIPPIUS_S3_REGION"
+    echo "RADIANT_S3_BUCKET=$R0_HIPPIUS_S3_BUCKET"
+    echo "RADIANT_S3_ACCESS_KEY=$R0_HIPPIUS_S3_ACCESS_KEY"
+    echo "RADIANT_S3_SECRET_KEY=$R0_HIPPIUS_S3_SECRET_KEY"
+    echo "RADIANT_S3_PREFIX=radiant-r3gate" ) >> "$W/env"
+  grep -q '^RADIANT_S3_BUCKET=.' "$W/env" || { echo "R0_HIPPIUS_S3_* not set in .env; use --storage minio"; exit 2; }
+fi
 cat > "$W/override.yml" <<EOF
 services:
   minio:
@@ -66,7 +81,7 @@ cleanup() { if [[ $KEEP -eq 0 ]]; then dc down -v --remove-orphans >/dev/null 2>
 trap cleanup EXIT
 API="http://127.0.0.1:${HTTP_PORT}"
 
-echo "1. stack up, campaign open, fee 0.01 testTAO to ${RECIPIENT:0:8}…"
+echo "1. stack up ($STORAGE storage), campaign open, fee 0.01 testTAO to ${RECIPIENT:0:8}…"
 dc down -v --remove-orphans >/dev/null 2>&1 || true
 dc up -d --build --wait >/dev/null
 dc run --rm --no-deps init python -m campaign.set_status testnet-cxr-01 open >/dev/null
