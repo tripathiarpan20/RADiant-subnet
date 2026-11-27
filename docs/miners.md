@@ -3,9 +3,8 @@
 You compete in a campaign by submitting a chest X-ray classifier: a small zip
 of Python code, with weights on Hugging Face. The owner validator gates and
 builds it, runs it offline on fresh DataHive studies against the current
-leader, and pays the crown holder. This page covers what works today (R2):
-preparing a solution and checking it exactly as the validator will.
-Submitting (upload, fee, commitment) arrives in R3.
+leader, and pays the crown holder. This page covers preparing a solution,
+checking it exactly as the validator will, and submitting it on testnet.
 
 ## What you need
 
@@ -39,6 +38,23 @@ radiant-sdk validate build/solution.zip --campaign testnet-cxr-01
 `validate` prints every gate as it runs and ends with a receipt next to the
 zip. `submit` will refuse anything without a passing receipt under 24 hours
 old, for that exact zip and campaign.
+
+## Submit (testnet)
+
+`miner.env` holds `RADIANT_API_URL`, `RADIANT_NETWORK=test`,
+`RADIANT_NETUID=292`, `WALLET_NAME` and `WALLET_HOTKEY`.
+
+```bash
+radiant-sdk submit build/solution.zip --campaign testnet-cxr-01 --dry-run   # checks only
+radiant-sdk submit build/solution.zip --campaign testnet-cxr-01             # upload, pay, commit
+radiant-sdk status sha256:<zip hash>
+```
+
+`submit` refuses to pay if the validator reports a different network or
+netuid, or if the campaign's fee recipient isn't the one pinned in the SDK.
+It asks before paying, and your coldkey password unlocks the transfer. If the
+commitment fails after paying, rerun with the `--payment-block` and
+`--payment-tx` it prints, rather than paying again.
 
 ## What a solution is
 

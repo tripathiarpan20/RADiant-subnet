@@ -40,10 +40,15 @@ Every phase keeps this current. Anything deferred to launch goes here.
 ## Found in the 27 Nov review of R0 to R2
 
 - [ ] Publish the safetensors reference weights (`scripts/publish_reference_weights.py --repo <RADiant HF org>/densenet121-res224-all-safetensors`) and pin the printed commit in `radiant_sdk/reference_miner/.env.template`. Until then the reference miner's full `validate` stops at `HF_WEIGHTS_FORMAT`; `--static-only` passes.
-- [ ] R3: `submit` checks `/v1/info` (network, netuid) against `miner.env` before paying.
 - [ ] R3: a public API domain behind Caddy for miners on other machines.
 - [ ] R3: point the app's `RADIANT_S3_*` at whichever store the storage probe passes (Hippius or MinIO); the R0 probe uses `R0_HIPPIUS_S3_*`.
 - [ ] R7: `radiant-sdk prepare --from <hash>` to fork a revealed solution.
 - [ ] R8: nightly Postgres backups off the VPS (`pg_dump` to the bucket) and a restore drill in the runbook; the database holds fee history, leader history and round evidence.
 - [ ] R8: a validator operator guide (host, .env, Modal, HF pin org, DataHive, wallets), alongside docs/miners.md.
 - [ ] Push the repo and confirm `.github/workflows/ci.yml` runs green (not yet run on GitHub).
+
+## Carried from R3
+
+- [ ] Run `scripts/r3_exit_gate.sh` on testnet once the safetensors reference weights are published (needs the coldkey password).
+- [ ] Hippius: bucket name for `R0_HIPPIUS_S3_BUCKET`, then `python -m scripts.r0 storage --providers hippius`; switch `RADIANT_S3_*` to Hippius if checksum and If-None-Match are enforced.
+- [ ] Set `TRUSTED_FEE_RECIPIENTS["finney"]` in `radiant_sdk/submit.py` to the mainnet owner coldkey before launch.

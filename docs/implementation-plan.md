@@ -4,14 +4,15 @@ Nov 25, 2026 · Arpan Tripathi. Copied into the repo on 27 Nov 2026 from the pla
 
 ## Implemented so far
 
-Updated as each phase lands. Status as of 27 Nov 2026 (R0 to R2).
+Updated as each phase lands. Status as of 27 Nov 2026 (R0 to R3).
 
 | Phase | State | Where | Notes |
 | --- | --- | --- | --- |
 | R0 Feasibility | Complete (27 Nov) | [`docs/implementation/R0.md`](implementation/R0.md), `scripts/r0/`, `tests/r0/` | Passed: Modal offline sandbox on L4 and L40S, Modal timeout enforcement, base-model licences, DenseNet-121 scored on the 20 demo images. Moved, with probes ready: storage checks to R3, Hugging Face checks to R4, DataHive checks to R5. |
 | R1 Foundations | Complete (27 Nov) | [`docs/implementation/R1.md`](implementation/R1.md), `config.py`, `campaign/`, `db/`, `storage/`, `api/`, `docker-compose.yml` | Exit gate passed: a fresh `docker compose up` seeds `testnet-cxr-01` and its hash is stable across reruns, restarts, the API and a recompute from storage. Stack: Postgres 17, MinIO (Chainguard build, since official images are gone), init job, API, Caddy, Adminer with a read-only role. |
 | R2 SDK and reference miner | Complete (27 Nov) | [`docs/implementation/R2.md`](implementation/R2.md), `radiant_sdk/`, `gate/contract.py` | Exit gate passed: the DenseNet reference miner passes `radiant-sdk validate` (static checks, HF weights, Modal build, offline L4 qualification, receipt), and a miner missing `map_to_labels` gets `CONTRACT_MISSING_OVERRIDE` from both the SDK and the validator gate. `submit` refuses without a fresh receipt; upload and payment are R3. Since then: safetensors-only weights pinned, `radiant-sdk lock`, Modal setup checks, `docs/miners.md`, testnet 292 defaults. |
-| R3 to R8 | Not started | | |
+| R3 Chain intake | Built (27 Nov); testnet gate pending | [`docs/implementation/R3.md`](implementation/R3.md), `chain/`, `storage/s3.py`, `storage/upload_auth.py`, `worker/watcher.py`, `radiant_sdk/submit.py` | Signed upload API with presigned PUT, the `r1` commitment format shared by the SDK and watcher, Pareton's fee-proof checks, payment-reuse and locator-ownership checks, first-seen dedupe, and the watcher service. 178 tests pass. The testnet run of `scripts/r3_exit_gate.sh` waits on the safetensors reference weights and a coldkey-password payment. |
+| R4 to R8 | Not started | | |
 
 Findings from R0 that change later phases are listed in R0.md. The two that matter most: the base DenseNet has no tuberculosis or silicosis output, so R2's reference miner needs a fine-tuned head, and Modal L4 capacity can be refused or queue for minutes, so R6 must treat that as infrastructure failure, not the miner's.
 
