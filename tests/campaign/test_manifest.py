@@ -17,7 +17,10 @@ FIXTURE_HASH = "sha256:cce1ee17af7dc01cf65f99ff3d85726f7aeacdfe7820b15fd181aa850
 
 
 def raw():
-    return json.loads(FIXTURE.read_text())
+    """The fixture as build_manifest sees it once the .env recipient is filled in."""
+    r = json.loads(FIXTURE.read_text())
+    r["submission_fee"]["recipient"] = "5GYfPfFRQPaLytjCyT78X769ZU9xm5tL43dN11sknTiZx34a"
+    return r
 
 
 def minimal():
@@ -33,7 +36,8 @@ def test_hash_is_stable_across_processes():
     code = ("from campaign.manifest import load_manifest_file;"
             f"print(load_manifest_file({str(FIXTURE)!r}).manifest_hash)")
     out = subprocess.run([sys.executable, "-c", code], cwd=REPO, capture_output=True, text=True, check=True,
-                         env={"PYTHONHASHSEED": "12345", "PATH": ""})
+                         env={"PYTHONHASHSEED": "12345", "PATH": "",
+                              "RADIANT_FEE_RECIPIENT": "5GYfPfFRQPaLytjCyT78X769ZU9xm5tL43dN11sknTiZx34a"})
     assert out.stdout.strip() == FIXTURE_HASH
 
 
@@ -163,3 +167,11 @@ def test_weights_formats_default_and_validation():
     r["gates"] = {"weights_formats": ["pickle"]}
     with pytest.raises(ValueError, match="weights_formats"):
         build_manifest(r)
+
+
+def test_fee_recipient_comes_from_env_when_the_file_has_none(monkeypatch):
+    m = load_manifest_file(FIXTURE)
+    assert m.submission_fee["recipient"] == "5GYfPfFRQPaLytjCyT78X769ZU9xm5tL43dN11sknTiZx34a"
+    monkeypatch.delenv("RADIANT_FEE_RECIPIENT")
+    with pytest.raises(ManifestError, match="RADIANT_FEE_RECIPIENT"):
+        load_manifest_file(FIXTURE)

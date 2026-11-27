@@ -17,6 +17,14 @@ import uuid
 import pytest
 
 PG_IMAGE = "postgres:17.12-alpine"
+FEE_RECIPIENT = "5GYfPfFRQPaLytjCyT78X769ZU9xm5tL43dN11sknTiZx34a"
+
+
+@pytest.fixture(autouse=True)
+def fee_recipient_env(monkeypatch):
+    """The fixture's recipient comes from .env, as on a real validator."""
+    monkeypatch.setenv("RADIANT_FEE_RECIPIENT", FEE_RECIPIENT)
+    monkeypatch.delenv("RADIANT_FEE_TAO", raising=False)
 
 
 def _free_port() -> int:

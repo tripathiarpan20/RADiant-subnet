@@ -115,6 +115,7 @@ def test_fee_history_is_append_only_in_sql(migrated, capsys):
 
 def test_open_start_weights_cannot_exceed_one(migrated):
     base = json.loads(FIXTURE.read_text())
+    base["submission_fee"]["recipient"] = "5GYfPfFRQPaLytjCyT78X769ZU9xm5tL43dN11sknTiZx34a"
     with connect() as conn:
         for i, w in enumerate((0.6, 0.5)):
             raw = {**base, "campaign_id": f"c{i}x", "emission_rule": {**base["emission_rule"], "start_weight": w}}

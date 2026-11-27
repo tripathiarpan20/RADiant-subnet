@@ -27,6 +27,7 @@ RADIANT_HTTP_BIND=127.0.0.1:${HTTP_PORT}
 RADIANT_HTTPS_BIND=127.0.0.1:$(port)
 RADIANT_MINIO_BIND=127.0.0.1
 RADIANT_SEED_MANIFEST=campaign/fixtures/testnet-cxr-01.json
+RADIANT_FEE_RECIPIENT=5GYfPfFRQPaLytjCyT78X769ZU9xm5tL43dN11sknTiZx34a
 EOF
 
 # Ports for MinIO and Adminer are fixed in the compose file; move them aside.
@@ -52,7 +53,8 @@ pass() { printf '  \033[32mpass\033[0m  %s\n' "$*"; }
 fail() { printf '  \033[31mFAIL\033[0m  %s\n' "$*"; exit 1; }
 seed_line() { dc logs --no-log-prefix init | grep -E '^(seeded|unchanged|replaced) ' | tail -1; }
 
-EXPECTED=$(uv run --extra validator python -m campaign.seed --manifest campaign/fixtures/testnet-cxr-01.json --check \
+EXPECTED=$(RADIANT_FEE_RECIPIENT=5GYfPfFRQPaLytjCyT78X769ZU9xm5tL43dN11sknTiZx34a \
+           uv run --extra validator python -m campaign.seed --manifest campaign/fixtures/testnet-cxr-01.json --check \
            | awk '{print $3}')
 echo "fixture hash (computed on the host): $EXPECTED"
 

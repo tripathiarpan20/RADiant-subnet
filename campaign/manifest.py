@@ -108,7 +108,21 @@ def build_manifest(raw: Mapping[str, Any]) -> CampaignManifest:
 
 
 def load_manifest_file(path: str | Path, **overrides: Any) -> CampaignManifest:
-    """Read a manifest JSON file; ``overrides`` replace top-level keys (e.g. submission_fee)."""
+    """Read a manifest JSON file; ``overrides`` replace top-level keys (e.g. submission_fee).
+
+    The fee recipient normally lives in the validator's .env, not in the
+    file: when the file's submission_fee has no recipient, RADIANT_FEE_RECIPIENT
+    supplies it. The recipient is outside the hash either way.
+    """
+    import os
+
     raw = json.loads(Path(path).read_text())
     raw.update({k: v for k, v in overrides.items() if v is not None})
+    fee = raw.get("submission_fee")
+    if isinstance(fee, dict) and "recipient" not in fee:
+        recipient = os.environ.get("RADIANT_FEE_RECIPIENT", "").strip()
+        if not recipient:
+            raise m.ManifestError("the fee recipient is not set: put the owner coldkey in RADIANT_FEE_RECIPIENT "
+                                  "(.env), or pass --fee-recipient")
+        raw["submission_fee"] = {**fee, "recipient": recipient}
     return build_manifest(raw)

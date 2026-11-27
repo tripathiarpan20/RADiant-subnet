@@ -6,7 +6,7 @@ Every phase keeps this current. Anything deferred to launch goes here.
 
 - [ ] Point `DATAHIVE_API_BASE` from DataHive's staging API to its production API.
 - [ ] Make the production API domain the SDK's default `RADIANT_API_URL`.
-- [ ] Seed testnet and mainnet campaigns with `RADIANT_FEE_RECIPIENT` set to the owner coldkey (the fixture's recipient is the public dev key Alice).
+- [x] The fee recipient is the owner coldkey in `.env` (`RADIANT_FEE_RECIPIENT`); seeding refuses without it.
 - [ ] Set `RADIANT_API_SITE` to the API domain and bind Caddy to 0.0.0.0:80/443 on the VPS.
 - [ ] Re-pin the Chainguard MinIO digest (`docker-compose.yml`) to a current build before launch.
 
@@ -52,4 +52,4 @@ Every phase keeps this current. Anything deferred to launch goes here.
 - [ ] Run `scripts/r3_exit_gate.sh` on testnet (needs the `bruh_dev_coldkey` password).
 - [x] Hippius storage probe passed on 27 Nov (checksum and If-None-Match enforced).
 - [x] The app's `RADIANT_S3_*` in the local `.env` point at the Hippius bucket.
-- [ ] Add the mainnet owner coldkey to `TRUSTED_FEE_RECIPIENTS["finney"]` in `radiant_sdk/submit.py` before launch, and set it as `submission_fee.recipient` in each mainnet campaign manifest.
+- [ ] Add the mainnet owner coldkey to `TRUSTED_FEE_RECIPIENTS["finney"]` in `radiant_sdk/submit.py` before launch, and set the mainnet validator's `RADIANT_FEE_RECIPIENT`.

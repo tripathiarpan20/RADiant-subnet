@@ -9,9 +9,10 @@ Behaviour on rerun:
     a draft with a different hash    refuse, unless --replace-draft
     a non-draft with a different hash refuse: the manifest is frozen
 
-The fee recipient and amount can be overridden from the environment
-(RADIANT_FEE_RECIPIENT, RADIANT_FEE_TAO) so one fixture serves local, testnet
-and mainnet without editing it. The fee is outside the hash either way.
+The fee recipient comes from the validator's .env (RADIANT_FEE_RECIPIENT),
+not the manifest file, so the owner's wallet is configured in one place and
+one fixture serves local, testnet and mainnet. RADIANT_FEE_TAO overrides the
+file's amount. Both are outside the hash.
 Prints one line, ``<status-word> <campaign_id> <manifest_hash>``, so scripts
 can compare hashes across reruns.
 """

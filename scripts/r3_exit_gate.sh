@@ -39,8 +39,9 @@ W=$(mktemp -d -t radiant-r3gate.XXXXXX)
 rand() { python3 -c 'import secrets; print(secrets.token_hex(20))'; }
 port() { python3 -c 'import socket; s=socket.socket(); s.bind(("127.0.0.1",0)); print(s.getsockname()[1])'; }
 HTTP_PORT=$(port); MINIO_PORT=$(port)
-# The campaign sets its own fee recipient (submission_fee in the manifest).
-RECIPIENT=$(python3 -c 'import json; print(json.load(open("campaign/fixtures/testnet-cxr-01.json"))["submission_fee"]["recipient"])')
+# The fee recipient is the owner wallet in .env (RADIANT_FEE_RECIPIENT).
+RECIPIENT=$(bash -c 'set -a; source .env 2>/dev/null; echo "${RADIANT_FEE_RECIPIENT:-}"')
+[[ -n "$RECIPIENT" ]] || fail "set RADIANT_FEE_RECIPIENT (the owner coldkey) in .env"
 cat > "$W/env" <<EOF
 POSTGRES_PASSWORD=$(rand)
 RADIANT_DB_READONLY_PASSWORD=$(rand)
@@ -50,6 +51,8 @@ RADIANT_HTTP_BIND=127.0.0.1:${HTTP_PORT}
 RADIANT_HTTPS_BIND=127.0.0.1:$(port)
 RADIANT_NETWORK=test
 RADIANT_NETUID=292
+RADIANT_FEE_RECIPIENT=${RECIPIENT}
+RADIANT_FEE_TAO=0.01
 RADIANT_POLL_INTERVAL_S=12
 RADIANT_S3_PRESIGN_ENDPOINT_URL=http://127.0.0.1:${MINIO_PORT}
 RADIANT_SEED_MANIFEST=campaign/fixtures/testnet-cxr-01.json
@@ -85,7 +88,9 @@ dc down -v --remove-orphans >/dev/null 2>&1 || true
 dc up -d --build --wait >/dev/null
 dc run --rm --no-deps init python -m campaign.set_status testnet-cxr-01 open >/dev/null
 curl -fsS "$API/v1/info" | grep -q '"netuid":292' || fail "/v1/info does not report netuid 292"
-pass "API at $API on test/292"
+SEEDED=$(curl -fsS "$API/v1/campaigns/testnet-cxr-01" | python3 -c 'import json,sys; print(json.load(sys.stdin)["submission_fee"]["recipient"])')
+[[ "$SEEDED" == "$RECIPIENT" ]] || fail "campaign fee recipient is $SEEDED, .env says $RECIPIENT"
+pass "API at $API on test/292; campaign fee goes to ${RECIPIENT:0:8}… (from .env)"
 if [[ $STACK_ONLY -eq 1 ]]; then
   dc run --rm --no-deps watcher python -m worker.watcher --once > "$W/scan.json" || fail "watcher scan failed"
   pass "watcher scanned netuid 292: $(python3 -c 'import json,sys; print(len(json.load(open(sys.argv[1]))))' "$W/scan.json") RADiant commitments on chain"

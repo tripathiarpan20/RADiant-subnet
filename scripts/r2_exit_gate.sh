@@ -27,6 +27,7 @@ sdk() { uv run --extra sdk python -m radiant_sdk "$@"; }
 if [[ -n "$API" ]]; then
   SRC=(--api-url "$API")
 else
+  RADIANT_FEE_RECIPIENT=${RADIANT_FEE_RECIPIENT:-5GYfPfFRQPaLytjCyT78X769ZU9xm5tL43dN11sknTiZx34a} \
   uv run --extra validator python - "$W/campaign.json" <<'PY'
 import json, sys
 from campaign.manifest import load_manifest_file
