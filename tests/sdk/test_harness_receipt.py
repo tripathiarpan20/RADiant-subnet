@@ -119,7 +119,7 @@ def test_submit_refuses_without_a_receipt(miner_dir, tmp_path, campaign_file, ca
 def test_submit_with_a_fresh_receipt_stops_before_sending_anything(miner_dir, tmp_path, campaign_file, capsys):
     zp, _ = _validated(miner_dir, tmp_path, campaign_file)
     assert cli.main(["submit", str(zp), "--campaign", "testnet-cxr-01", "--manifest", str(campaign_file)]) == 3
-    assert "nothing was sent" in capsys.readouterr().err
+    assert "Nothing was sent" in capsys.readouterr().err
 
 
 def test_fetch_campaign_rejects_a_tampered_manifest(campaign_file):

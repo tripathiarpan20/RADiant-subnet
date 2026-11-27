@@ -8,8 +8,8 @@
 
 ``submit`` checks the validation receipt before it does anything else: it
 refuses to presign, upload or pay unless a passing receipt for this exact
-zip, campaign manifest and SDK version is under 24 hours old. The upload,
-fee payment and on-chain commitment arrive in R3.
+zip, campaign manifest and SDK version is under 24 hours old. Then it
+uploads, pays the fee from the coldkey and commits with the hotkey.
 """
 
 from __future__ import annotations
@@ -66,22 +66,45 @@ def cmd_validate(args) -> int:
 def cmd_submit(args) -> int:
     from .validate import check_receipt, fetch_campaign
 
-    campaign = fetch_campaign(args.campaign, api_url=args.api_url,
-                              manifest_file=Path(args.manifest) if args.manifest else None)
+    if args.manifest:  # offline check only: is there a receipt for this zip?
+        campaign = fetch_campaign(args.campaign, manifest_file=Path(args.manifest))
+        try:
+            receipt = check_receipt(Path(args.zip), args.campaign, campaign["manifest_hash"])
+        except ValueError as exc:
+            print(f"radiant-sdk submit: refused: {exc}", file=sys.stderr)
+            return 2
+        print(f"radiant-sdk submit: receipt OK ({receipt['validated_at']}, {receipt['sha256']}); "
+              "submitting needs --api-url, not --manifest. Nothing was sent.", file=sys.stderr)
+        return 3
+    from .submit import submit
+
     try:
-        receipt = check_receipt(Path(args.zip), args.campaign, campaign["manifest_hash"])
+        result = submit(Path(args.zip), args.campaign, api_url=args.api_url,
+                        network=args.network or os.environ.get("RADIANT_NETWORK", "test"),
+                        netuid=int(args.netuid or os.environ.get("RADIANT_NETUID", "292")),
+                        wallet_name=args.wallet_name or os.environ.get("WALLET_NAME", "default"),
+                        wallet_hotkey=args.wallet_hotkey or os.environ.get("WALLET_HOTKEY", "default"),
+                        yes=args.yes, dry_run=args.dry_run, max_fee_tao=args.max_fee_tao,
+                        payment_block=args.payment_block, payment_tx=args.payment_tx)
     except ValueError as exc:
         print(f"radiant-sdk submit: refused: {exc}", file=sys.stderr)
         return 2
-    print(f"radiant-sdk submit: receipt OK ({receipt['validated_at']}, {receipt['sha256']}).", file=sys.stderr)
-    print("radiant-sdk submit: upload, fee payment and on-chain commitment arrive in R3; nothing was sent.",
-          file=sys.stderr)
-    return 3
+    print(json.dumps(result, indent=2))
+    return 0
 
 
 def cmd_status(args) -> int:
-    print("radiant-sdk status: submission status arrives with the R3 intake API.", file=sys.stderr)
-    return 3
+    from .submit import _http
+    from .validate import _check_url
+
+    base = _check_url(args.api_url or os.environ.get("RADIANT_API_URL", ""))
+    sha = args.sha256 if args.sha256.startswith("sha256:") else "sha256:" + args.sha256
+    try:
+        print(json.dumps(_http("GET", f"{base}/v1/submissions/{sha}"), indent=2))
+    except ValueError as exc:
+        print(f"radiant-sdk status: {exc}", file=sys.stderr)
+        return 2
+    return 0
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -108,6 +131,16 @@ def main(argv: list[str] | None = None) -> int:
         sp.add_argument("--campaign", required=True)
         sp.add_argument("--api-url", default=None, help="default: RADIANT_API_URL")
         sp.add_argument("--manifest", help="a saved GET /v1/campaigns/{id} response, instead of the API")
+        if name == "submit":
+            sp.add_argument("--network", help="default: RADIANT_NETWORK from miner.env (test)")
+            sp.add_argument("--netuid", help="default: RADIANT_NETUID from miner.env (292)")
+            sp.add_argument("--wallet-name", help="default: WALLET_NAME from miner.env")
+            sp.add_argument("--wallet-hotkey", help="default: WALLET_HOTKEY from miner.env")
+            sp.add_argument("--yes", action="store_true", help="pay without the confirmation prompt")
+            sp.add_argument("--dry-run", action="store_true", help="check everything, send nothing")
+            sp.add_argument("--max-fee-tao", help="refuse if the campaign fee is higher")
+            sp.add_argument("--payment-block", type=int, help="reuse a fee already paid (after a failed commit)")
+            sp.add_argument("--payment-tx", type=int)
         if name == "validate":
             sp.add_argument("--modal-environment", default=None)
             sp.add_argument("--static-only", action="store_true", help="skip Hugging Face and Modal")
@@ -117,6 +150,7 @@ def main(argv: list[str] | None = None) -> int:
 
     sp = sub.add_parser("status", help="submission state and gate log")
     sp.add_argument("sha256")
+    sp.add_argument("--api-url", default=None)
     sp.set_defaults(fn=cmd_status)
 
     args = p.parse_args(argv)
