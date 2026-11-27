@@ -29,3 +29,10 @@ Every phase keeps this current. Anything deferred to launch goes here.
 
 - [ ] R3: put MinIO's S3 API behind Caddy on its own domain so miners can PUT to presigned URLs, and give the API a scoped MinIO user instead of the root credentials.
 - [ ] R3/R4: per-service Postgres roles (API read-mostly, watcher and worker scoped) instead of the owner role.
+
+## Carried from R2
+
+- [ ] R3: `radiant-sdk submit` presign, PUT, fee payment and commitment (it stops after the receipt check today), and `status` against the intake API.
+- [ ] R4: the validator's g7 build uses a killable build worker (as vidaio does) instead of the SDK's thread deadline, and g8 times load and evaluation from outside the sandbox.
+- [ ] R4/R6: treat Modal GPU capacity waits as infrastructure, never miner fault (L4 queued 167 s and longer during R2).
+- [ ] Before launch: decide whether to swap the synthetic warmup set for licensed public X-rays.
