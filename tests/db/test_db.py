@@ -28,7 +28,7 @@ def seed_out(capsys, *args):
 
 
 def test_migrations_apply_once_and_detect_edits(db_url, tmp_path):
-    assert mig.migrate(db_url) == ["0001_campaigns"]
+    assert mig.migrate(db_url) == ["0001_campaigns", "0002_submissions"]
     assert mig.migrate(db_url) == []
     edited = tmp_path / "m"
     shutil.copytree(mig.MIGRATIONS_DIR, edited)

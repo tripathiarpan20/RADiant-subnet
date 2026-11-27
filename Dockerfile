@@ -13,15 +13,17 @@ ENV UV_PROJECT_ENVIRONMENT=/opt/venv \
 
 WORKDIR /app
 COPY pyproject.toml uv.lock ./
-RUN uv sync --frozen --extra validator --no-install-project && rm /usr/local/bin/uv
+RUN uv sync --frozen --extra validator --extra chain --no-install-project && rm /usr/local/bin/uv
 
 COPY config.py ./
 COPY api ./api
 COPY campaign ./campaign
+COPY chain ./chain
 COPY db ./db
 COPY gate ./gate
 COPY radiant_sdk ./radiant_sdk
 COPY storage ./storage
+COPY worker ./worker
 
 RUN useradd --system --uid 10001 --no-create-home radiant
 USER radiant

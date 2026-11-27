@@ -67,3 +67,65 @@ def append_fee(conn, campaign_id: str, fee: dict[str, Any], effective_from_block
 def stored_hash_matches(row: dict[str, Any]) -> bool:
     """Recompute the hash from the stored pin set: the audit check for a row."""
     return compute_manifest_hash(row["manifest"]) == row["manifest_hash"]
+
+
+# ── submissions (R3) ────────────────────────────────────────────────────────
+
+SUBMISSION_COLUMNS = ("id, campaign_id, hotkey, coldkey, uid, sha256, code_sha256, object_key, size_bytes, "
+                      "commit_block, payment_block, payment_tx, fee_exempt, state, created_at, updated_at")
+
+
+def get_submission(conn, campaign_id: str, sha256: str) -> dict[str, Any] | None:
+    return conn.execute(f"SELECT {SUBMISSION_COLUMNS} FROM submissions WHERE campaign_id = %s AND sha256 = %s",
+                        (campaign_id, sha256)).fetchone()
+
+
+def find_submissions(conn, sha256: str) -> list[dict[str, Any]]:
+    return conn.execute(f"SELECT {SUBMISSION_COLUMNS} FROM submissions WHERE sha256 = %s ORDER BY id",
+                        (sha256,)).fetchall()
+
+
+def payment_ref_used(conn, block: int, tx: int) -> bool:
+    return conn.execute("SELECT 1 FROM submissions WHERE payment_block = %s AND payment_tx = %s",
+                        (block, tx)).fetchone() is not None
+
+
+def insert_submission(conn, com, *, size_bytes: int, fee_exempt: bool) -> int | None:
+    """Insert and log a 'queued' event. None if the (campaign, sha256) slot or the fee proof is taken."""
+    row = conn.execute(
+        """INSERT INTO submissions (campaign_id, hotkey, coldkey, uid, sha256, code_sha256, object_key, size_bytes,
+                                    commit_block, payment_block, payment_tx, fee_exempt)
+           VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+           ON CONFLICT DO NOTHING RETURNING id""",
+        (com.campaign_id, com.hotkey, com.coldkey, com.uid, com.sha256, com.code_sha256, com.object_key, size_bytes,
+         com.commit_block, com.payment_block, com.payment_tx, fee_exempt)).fetchone()
+    if row is None:
+        return None
+    conn.execute("INSERT INTO submission_events (submission_id, state, detail) VALUES (%s, 'queued', %s)",
+                 (row["id"], Jsonb({"commit_block": com.commit_block, "payment_block": com.payment_block,
+                                    "payment_tx": com.payment_tx, "fee_exempt": fee_exempt})))
+    return row["id"]
+
+
+def record_rejection(conn, com, reason: str) -> None:
+    conn.execute(
+        """INSERT INTO intake_rejections (hotkey, commit_block, raw, campaign_id, sha256, reason)
+           VALUES (%s, %s, %s, %s, %s, %s)
+           ON CONFLICT (hotkey, commit_block, raw) DO UPDATE SET reason = EXCLUDED.reason, last_seen = now()""",
+        (com.hotkey, com.commit_block, com.raw, com.campaign_id, com.sha256, reason))
+
+
+def rejection_reason(conn, com) -> str | None:
+    row = conn.execute("SELECT reason FROM intake_rejections WHERE hotkey = %s AND commit_block = %s AND raw = %s",
+                       (com.hotkey, com.commit_block, com.raw)).fetchone()
+    return row["reason"] if row else None
+
+
+def rejections_for(conn, sha256: str) -> list[dict[str, Any]]:
+    return conn.execute("SELECT hotkey, commit_block, campaign_id, reason, first_seen, last_seen FROM intake_rejections "
+                        "WHERE sha256 = %s ORDER BY first_seen", (sha256,)).fetchall()
+
+
+def submission_events(conn, submission_id: int) -> list[dict[str, Any]]:
+    return conn.execute("SELECT state, detail, at FROM submission_events WHERE submission_id = %s ORDER BY at, id",
+                        (submission_id,)).fetchall()
