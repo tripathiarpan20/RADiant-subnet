@@ -46,12 +46,13 @@ old, for that exact zip and campaign.
 
 ```bash
 radiant-sdk submit build/solution.zip --campaign testnet-cxr-01 --dry-run   # checks only
-radiant-sdk submit build/solution.zip --campaign testnet-cxr-01             # upload, pay, commit
+radiant-sdk submit build/solution.zip --campaign testnet-cxr-01 --wait 300  # upload, pay, commit, follow intake
 radiant-sdk status sha256:<zip hash>
 ```
 
-`submit` refuses to pay if the validator reports a different network or
-netuid. It also refuses if the campaign's fee recipient is neither one of the
+Your hotkey must be registered on netuid 292: the validator only issues
+upload URLs to registered hotkeys, at most 10 per hour. `submit` refuses to
+pay if the validator reports a different network or netuid. It also refuses if the campaign's fee recipient is neither one of the
 owner addresses pinned in the SDK nor listed in your
 `RADIANT_TRUSTED_FEE_RECIPIENTS`.
 It asks before paying, and your coldkey password unlocks the transfer. If the

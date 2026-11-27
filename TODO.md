@@ -53,3 +53,15 @@ Every phase keeps this current. Anything deferred to launch goes here.
 - [x] `scripts/r3_exit_gate.sh` passed on testnet on 27 Nov (payment 8537891-6).
 - [x] Hippius storage probe passed on 27 Nov (checksum and If-None-Match enforced).
 - [x] The app's `RADIANT_S3_*` in the local `.env` point at the Hippius bucket.
+
+## Found in the 27 Nov review of R0 to R3
+
+- [x] Presigned PUTs sign Content-Length (a miner could otherwise PUT far more than it declared, at our storage cost).
+- [x] Presigns only for hotkeys registered on the netuid, capped per hotkey per hour.
+- [x] The storage probe checks the bucket refuses anonymous reads (Hippius: 403) and oversize bodies (403).
+- [x] `submit` re-checks the fee at the payment's block before committing; `--wait` follows intake.
+- [ ] **Before outside miners join testnet:** a public API domain behind Caddy (`RADIANT_API_SITE`, ports 80/443 on the VPS) and that URL as `RADIANT_API_URL` in the reference `miner.env.template`. Today the API is only reachable on the validator host.
+- [ ] R4: an orphan reaper. Hippius accepts lifecycle rules but doesn't apply them, so delete uploads in `upload_authorizations` that were never committed after 48 h.
+- [ ] R4: zips refused at intake still hold the miner's `.env` (HF token) in the bucket. Strip or delete them, like the post-g5 stripping the plan describes for R7.
+- [ ] R4: per-campaign disqualified hotkeys (g0), also refused by the upload API, as in Pareton.
+- [ ] R8: rate limiting at Caddy for the public API, and alerts on watcher scan failures and spikes in intake rejections.
