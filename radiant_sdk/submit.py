@@ -149,8 +149,9 @@ def submit(zip_path: Path, campaign_id: str, *, api_url: str | None, network: st
         say(f"reusing payment {block}-{index}")
     elif fee_rao > 0:
         if not yes:
-            answer = input(f"Pay {fee['amount_tao']} {currency} to {fee['recipient']} from coldkey "
-                           f"{wallet_name}? [y/N] ")
+            print(f"Pay {fee['amount_tao']} {currency} to {fee['recipient']} from coldkey {wallet_name}? [y/N] ",
+                  end="", file=sys.stderr, flush=True)  # stderr: stdout stays one JSON document
+            answer = input()
             if answer.strip().lower() not in ("y", "yes"):
                 raise ValueError("cancelled before payment (the upload is kept; rerun to continue)")
         say("unlocking the coldkey to pay the fee")

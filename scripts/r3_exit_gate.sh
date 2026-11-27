@@ -4,7 +4,10 @@
 # rejected.
 #
 #   scripts/r3_exit_gate.sh [--wallet bruh_dev_coldkey] [--hotkey bruh_dev_hotkey_3] [--storage hippius|minio]
-#                           [--keep] [--stack-only]
+#                           [--keep] [--stack-only] [--resume sha256:<zip hash>]
+#
+# --resume skips validate and submit and checks a submission already
+# committed on chain (e.g. after a failed run that had already paid).
 #
 # Run it in your own terminal: it pays the campaign fee (0.01 testTAO) from
 # the wallet's coldkey, so it asks for the coldkey password once. It brings up
@@ -14,7 +17,7 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 REPO=$(pwd)
-WALLET=bruh_dev_coldkey; HOTKEY=bruh_dev_hotkey_3; KEEP=0; STACK_ONLY=0; STORAGE=hippius
+WALLET=bruh_dev_coldkey; HOTKEY=bruh_dev_hotkey_3; KEEP=0; STACK_ONLY=0; STORAGE=hippius; RESUME=""
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --wallet) WALLET="$2"; shift 2 ;;
@@ -22,13 +25,14 @@ while [[ $# -gt 0 ]]; do
     --keep) KEEP=1; shift ;;
     --stack-only) STACK_ONLY=1; shift ;;
     --storage) STORAGE="$2"; shift 2 ;;
+    --resume) RESUME="$2"; shift 2 ;;
     *) echo "unknown option $1"; exit 2 ;;
   esac
 done
 pass() { printf '  \033[32mpass\033[0m  %s\n' "$*"; }
 fail() { printf '  \033[31mFAIL\033[0m  %s\n' "$*"; exit 1; }
 
-if [[ $STACK_ONLY -eq 0 ]] && grep -q '^HF_REPO_ID=torchxrayvision/' radiant_sdk/reference_miner/.env.template; then
+if [[ $STACK_ONLY -eq 0 && -z "$RESUME" ]] && grep -q '^HF_REPO_ID=torchxrayvision/' radiant_sdk/reference_miner/.env.template; then
   fail "the reference miner still points at the pickle weights; publish the safetensors copy first:
     HF_TOKEN=<write token> uv run --extra sdk --extra r0-models python scripts/publish_reference_weights.py --out /tmp/ref-weights --repo <org>/densenet121-res224-all-safetensors
   then set HF_REPO_ID and HF_REVISION in radiant_sdk/reference_miner/.env.template"
@@ -65,8 +69,7 @@ if [[ "$STORAGE" == "hippius" ]]; then
     echo "RADIANT_S3_REGION=$R0_HIPPIUS_S3_REGION"
     echo "RADIANT_S3_BUCKET=$R0_HIPPIUS_S3_BUCKET"
     echo "RADIANT_S3_ACCESS_KEY=$R0_HIPPIUS_S3_ACCESS_KEY"
-    echo "RADIANT_S3_SECRET_KEY=$R0_HIPPIUS_S3_SECRET_KEY"
-    echo "RADIANT_S3_PREFIX=radiant-r3gate" ) >> "$W/env"
+    echo "RADIANT_S3_SECRET_KEY=$R0_HIPPIUS_S3_SECRET_KEY" ) >> "$W/env"
   grep -q '^RADIANT_S3_BUCKET=.' "$W/env" || { echo "R0_HIPPIUS_S3_* not set in .env; use --storage minio"; exit 2; }
 fi
 cat > "$W/override.yml" <<EOF
@@ -97,26 +100,26 @@ if [[ $STACK_ONLY -eq 1 ]]; then
   echo "stack-only check passed."; exit 0
 fi
 
-echo "2. reference miner: prepare and validate (Modal)"
-cp -r radiant_sdk/reference_miner "$W/miner" && cp "$W/miner/.env.template" "$W/miner/.env"
-cat > "$W/miner/miner.env" <<EOF
-RADIANT_API_URL=$API
-RADIANT_NETWORK=test
-RADIANT_NETUID=292
-WALLET_NAME=$WALLET
-WALLET_HOTKEY=$HOTKEY
-EOF
-sdk() { (cd "$W/miner" && uv run --project "$REPO" --extra sdk radiant-sdk "$@"); }
-sdk prepare . --out build >/dev/null
-sdk validate build/solution.zip --campaign testnet-cxr-01 > "$W/validate.json" 2> "$W/validate.log" \
-  || { tail -25 "$W/validate.log"; fail "validate did not pass"; }
-pass "validate passed; receipt written"
+if [[ -n "$RESUME" ]]; then
+  SHA="$RESUME"
+  echo "2-3. resuming: $SHA is already committed on chain"
+else
+  echo "2. reference miner: prepare and validate (Modal)"
+  cp -r radiant_sdk/reference_miner "$W/miner" && cp "$W/miner/.env.template" "$W/miner/.env"
+  printf 'RADIANT_API_URL=%s\nRADIANT_NETWORK=test\nRADIANT_NETUID=292\nWALLET_NAME=%s\nWALLET_HOTKEY=%s\n' \
+    "$API" "$WALLET" "$HOTKEY" > "$W/miner/miner.env"
+  sdk() { (cd "$W/miner" && uv run --project "$REPO" --extra sdk radiant-sdk "$@"); }
+  sdk prepare . --out build >/dev/null
+  sdk validate build/solution.zip --campaign testnet-cxr-01 > "$W/validate.json" 2> "$W/validate.log" \
+    || { tail -25 "$W/validate.log"; fail "validate did not pass"; }
+  pass "validate passed; receipt written"
 
-echo "3. submit: upload, pay (you will be asked to confirm and for the coldkey password), commit"
-sdk submit build/solution.zip --campaign testnet-cxr-01 \
-  | tee "$W/submit.json"
-SHA=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["sha256"])' "$W/submit.json")
-pass "committed $SHA"
+  echo "3. submit: upload, pay (you will be asked to confirm and for the coldkey password), commit"
+  sdk submit build/solution.zip --campaign testnet-cxr-01 \
+    | tee "$W/submit.json"
+  SHA=$(python3 -c 'import json,re,sys; t=open(sys.argv[1]).read(); print(json.loads(t[t.index("{"):t.rindex("}")+1])["sha256"])' "$W/submit.json")
+  pass "committed $SHA"
+fi
 
 echo "4. watcher ingests it"
 for i in $(seq 1 50); do
@@ -127,5 +130,5 @@ done
 pass "queued by the watcher"
 
 echo "5. exactly once, and bad proofs rejected (using the real payment)"
-dc run --rm --no-deps -v "$(pwd)/scripts:/app/scripts:ro" watcher python scripts/r3_checks.py "$SHA"
+dc run --rm --no-deps -v "$(pwd)/scripts:/app/scripts:ro" watcher python -m scripts.r3_checks "$SHA"
 echo "R3 exit gate passed."

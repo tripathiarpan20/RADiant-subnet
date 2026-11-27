@@ -1,6 +1,6 @@
 """R3 exit-gate checks against a real testnet payment (run inside the stack's watcher container).
 
-    python scripts/r3_checks.py <sha256 of the ingested zip>
+    python -m scripts.r3_checks <sha256 of the ingested zip>
 
 With the submission the watcher ingested from the real chain:
 
@@ -61,8 +61,9 @@ def main(sha: str) -> int:
         if view is None:
             fail("could not read the payment block back from the chain")
         campaign = store.get_campaign(conn, sub["campaign_id"])
-        fee = campaign["submission_fee_history"][-1]
-        from campaign.fees import submission_fee_rao
+        from campaign.fees import fee_at_block, submission_fee_rao
+
+        fee = fee_at_block(campaign["submission_fee_history"], sub["payment_block"])
 
         paid = verify_payment(extrinsics=view.extrinsics, events=view.events, extrinsic_index=sub["payment_tx"],
                               recipient=fee["recipient"], min_amount_rao=submission_fee_rao(fee),

@@ -4,6 +4,7 @@ Every phase keeps this current. Anything deferred to launch goes here.
 
 ## Before mainnet launch
 
+- [ ] **Payment address for mainnet:** set `RADIANT_FEE_RECIPIENT` in the mainnet validator's `.env` to the mainnet owner coldkey, and add that address to `TRUSTED_FEE_RECIPIENTS["finney"]` in `radiant_sdk/submit.py` (empty today, so `submit` refuses to pay on finney). Release the SDK with it before the first mainnet campaign opens.
 - [ ] Point `DATAHIVE_API_BASE` from DataHive's staging API to its production API.
 - [ ] Make the production API domain the SDK's default `RADIANT_API_URL`.
 - [x] The fee recipient is the owner coldkey in `.env` (`RADIANT_FEE_RECIPIENT`); seeding refuses without it.
@@ -49,7 +50,6 @@ Every phase keeps this current. Anything deferred to launch goes here.
 
 ## Carried from R3
 
-- [ ] Run `scripts/r3_exit_gate.sh` on testnet (needs the `bruh_dev_coldkey` password).
+- [x] `scripts/r3_exit_gate.sh` passed on testnet on 27 Nov (payment 8537891-6).
 - [x] Hippius storage probe passed on 27 Nov (checksum and If-None-Match enforced).
 - [x] The app's `RADIANT_S3_*` in the local `.env` point at the Hippius bucket.
-- [ ] Add the mainnet owner coldkey to `TRUSTED_FEE_RECIPIENTS["finney"]` in `radiant_sdk/submit.py` before launch, and set the mainnet validator's `RADIANT_FEE_RECIPIENT`.

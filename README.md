@@ -22,6 +22,10 @@ report in `docs/implementation/R<n>.md`, and `TODO.md` is the launch checklist.
   prepare, validate (offline Modal self-test and receipt) and a receipt-gated
   submit; DenseNet-121 reference miner; report in
   [docs/implementation/R2.md](docs/implementation/R2.md).
+- **R3 Chain intake**: complete (27 Nov 2026). Signed uploads to Hippius,
+  fee payment and on-chain commitment from `radiant-sdk submit`, and the
+  watcher; passed on testnet 292; report in
+  [docs/implementation/R3.md](docs/implementation/R3.md).
 
 ## Running the validator stack
 
