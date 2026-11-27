@@ -1,7 +1,8 @@
 """Static checks on a solution zip, shared by the SDK and the validator.
 
-These are gates g1 (size), g2 (archive safety), g3 (contract) and the static
-half of g5 (.env), plus the descriptor and lockfile rules. Nothing here
+These are gates g1 (size), g2 (archive safety), g3 (contract), g4
+(obfuscation, radiant_sdk.obfuscation) and the static half of g5 (.env), plus
+the descriptor and lockfile rules. Nothing here
 imports or runs miner code: the contract check reads the AST.
 
     report = run_static_checks(zip_bytes, manifest)   # raises SolutionRejected
@@ -321,6 +322,9 @@ def run_static_checks(zip_bytes: bytes, manifest: Mapping[str, Any]) -> StaticRe
     env = parse_env(files[".env"].decode())
     check_lock(files["requirements.lock"].decode())
     check_contract(files, manifest["solution"]["base_class"])
+    from .obfuscation import check as check_obfuscation
+
+    check_obfuscation(files, manifest["gates"]["obfuscation_rules"])  # g4
     return StaticReport(
         sha256="sha256:" + hashlib.sha256(zip_bytes).hexdigest(),
         code_sha256=code_sha256(files),
