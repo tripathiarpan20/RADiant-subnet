@@ -4,7 +4,7 @@ Nov 25, 2026 · Arpan Tripathi. Copied into the repo on 27 Nov 2026 from the pla
 
 ## Implemented so far
 
-Updated as each phase lands. Status as of 27 Nov 2026 (R0 to R3 complete).
+Updated as each phase lands. Status as of 27 Nov 2026 (R0 to R4 complete).
 
 | Phase | State | Where | Notes |
 | --- | --- | --- | --- |
@@ -12,7 +12,8 @@ Updated as each phase lands. Status as of 27 Nov 2026 (R0 to R3 complete).
 | R1 Foundations | Complete (27 Nov) | [`docs/implementation/R1.md`](implementation/R1.md), `config.py`, `campaign/`, `db/`, `storage/`, `api/`, `docker-compose.yml` | Exit gate passed: a fresh `docker compose up` seeds `testnet-cxr-01` and its hash is stable across reruns, restarts, the API and a recompute from storage. Stack: Postgres 17, MinIO (Chainguard build, since official images are gone), init job, API, Caddy, Adminer with a read-only role. |
 | R2 SDK and reference miner | Complete (27 Nov) | [`docs/implementation/R2.md`](implementation/R2.md), `radiant_sdk/`, `gate/contract.py` | Exit gate passed: the DenseNet reference miner passes `radiant-sdk validate` (static checks, HF weights, Modal build, offline L4 qualification, receipt), and a miner missing `map_to_labels` gets `CONTRACT_MISSING_OVERRIDE` from both the SDK and the validator gate. `submit` refuses without a fresh receipt; upload and payment are R3. Since then: safetensors-only weights pinned, `radiant-sdk lock`, Modal setup checks, `docs/miners.md`, testnet 292 defaults. |
 | R3 Chain intake | Complete (27 Nov) | [`docs/implementation/R3.md`](implementation/R3.md), `chain/`, `storage/s3.py`, `storage/upload_auth.py`, `worker/watcher.py`, `radiant_sdk/submit.py` | Exit gate passed on testnet 292 with Hippius storage: a paid submission (payment 8537891-6) was ingested exactly once, and the real payment re-checked against a wrong recipient, an underpaid fee and another signer was rejected, as were a reused proof and a foreign locator. The fee recipient is the owner coldkey from `.env`. |
-| R4 to R8 | Not started | | |
+| R4 Gates, build, qualification | Complete (27 Nov) | [`docs/implementation/R4.md`](implementation/R4.md), `worker/`, `build/`, `radiant_sdk/obfuscation.py`, `db/migrations/0004_gates.sql` | Exit gate passed on Modal T4, Hippius and the `radiant-bittensor` HF org. The reference miner reached `queued` with a private pin `rad-testnet-cxr-01-<hotkey>-s1`. Zip-slip, symlink, `.pyc`, missing override, obfuscated loader, wrong HF revision and slow `load_model` each failed with their stable codes, and none was pinned. Every stored zip was stripped of `.env`. |
+| R5 to R8 | Not started | | |
 
 Findings from R0 that change later phases are listed in R0.md. The two that matter most: the base DenseNet has no tuberculosis or silicosis output, so R2's reference miner needs a fine-tuned head, and Modal L4 capacity can be refused or queue for minutes, so R6 must treat that as infrastructure failure, not the miner's.
 

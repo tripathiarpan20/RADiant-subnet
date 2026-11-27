@@ -34,8 +34,10 @@ Every phase keeps this current. Anything deferred to launch goes here.
 ## Carried from R2
 
 - [ ] R3: `radiant-sdk submit` presign, PUT, fee payment and commitment (it stops after the receipt check today), and `status` against the intake API.
-- [ ] R4: the validator's g7 build uses a killable build worker (as vidaio does) instead of the SDK's thread deadline, and g8 times load and evaluation from outside the sandbox.
-- [ ] R4/R6: a sandbox that never starts (no GPU within `SANDBOX_GPU_WAIT_S`, default 900 s) is `infra_failed`, requeued once as in Pareton, never scored or rejected; a leader infra failure voids the round. Reuse the harness start marker and `GPU_UNAVAILABLE` from R2. (L4 queued 167 s and over 15 min during R2.)
+- [x] R4: g7 builds in a killable child process.
+- [ ] R6: time evaluation from outside the round sandbox (the harness's own timings are for reports only).
+- [x] R4: a qualification sandbox that never starts is `infra_failed`, requeued once after a back-off; stuck requests are replaced every 2 min.
+- [ ] R6: the same rule for round sandboxes, and a leader infra failure voids the round.
 - [ ] Before launch: decide whether to swap the synthetic warmup set for licensed public X-rays.
 
 ## Found in the 27 Nov review of R0 to R2
@@ -61,7 +63,15 @@ Every phase keeps this current. Anything deferred to launch goes here.
 - [x] The storage probe checks the bucket refuses anonymous reads (Hippius: 403) and oversize bodies (403).
 - [x] `submit` re-checks the fee at the payment's block before committing; `--wait` follows intake.
 - [ ] **Before outside miners join testnet:** a public API domain behind Caddy (`RADIANT_API_SITE`, ports 80/443 on the VPS) and that URL as `RADIANT_API_URL` in the reference `miner.env.template`. Today the API is only reachable on the validator host.
-- [ ] R4: an orphan reaper. Hippius accepts lifecycle rules but doesn't apply them, so delete uploads in `upload_authorizations` that were never committed after 48 h.
-- [ ] R4: zips refused at intake still hold the miner's `.env` (HF token) in the bucket. Strip or delete them, like the post-g5 stripping the plan describes for R7.
-- [ ] R4: per-campaign disqualified hotkeys (g0), also refused by the upload API, as in Pareton.
+- [x] R4: orphan reaper (worker/reaper.py): never-committed uploads after 48 h, and permanently refused ones, never another miner's.
+- [x] R4: the stored zip is stripped of `.env` after g5 and on any rejection; zips refused at intake are reaped.
+- [x] R4: per-campaign disqualified hotkeys (g0, `campaign_disqualifications`).
+- [ ] R4 follow-up: the upload API should also refuse disqualified hotkeys (Pareton does), and an operator CLI to disqualify and requeue.
 - [ ] R8: rate limiting at Caddy for the public API, and alerts on watcher scan failures and spikes in intake rejections.
+
+## Found in R4
+
+- [ ] Before mainnet: decide whether g6 should also flag copied weights with different code (today it needs both code and weights to match).
+- [ ] Run the HF private-download path against a private test repo with a fine-grained read token (the reference weights are public).
+- [ ] Read the `radiant-bittensor` org's private storage quota (huggingface.co/organizations/radiant-bittensor/settings/billing); pins accumulate one per passing submission until reveal.
+- [ ] Set `MODAL_TOKEN_ID`/`MODAL_TOKEN_SECRET` in `.env` (a validator workspace) before running the worker container; the R4 gate used the host's `modal setup` login.

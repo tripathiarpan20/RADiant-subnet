@@ -1,6 +1,6 @@
 {
   "probe": "hf",
-  "ran_at": "2026-11-27T12:07:38+00:00",
+  "ran_at": "2026-11-27T17:33:47+00:00",
   "host": {
     "system": "Darwin",
     "machine": "arm64",
@@ -23,14 +23,20 @@
     {
       "gate": "hf_pin_upload",
       "status": "blocked",
-      "summary": "HF_PIN_ORG / HF_PIN_TOKEN not set",
+      "summary": "nothing downloaded to pin",
       "details": {}
     },
     {
       "gate": "hf_org_quota",
-      "status": "blocked",
-      "summary": "HF_PIN_ORG / HF_PIN_TOKEN not set",
-      "details": {}
+      "status": "pending",
+      "summary": "no quota API answered; read it at https://huggingface.co/organizations/radiant-bittensor/settings/billing",
+      "details": {
+        "org": "radiant-bittensor",
+        "tried": {
+          "/api/organizations/radiant-bittensor/storage": 404,
+          "/api/organizations/radiant-bittensor/overview": 200
+        }
+      }
     }
   ]
 }

@@ -1,0 +1,17 @@
+  pass  reference: queued
+  pass  zip_slip: PATH_ESCAPE (../../evil.py)
+  pass  symlink: SYMLINK (src/link.py)
+  pass  pyc: OPAQUE_BINARY (src/cache.pyc is not UTF-8 text (weights belong on Hugging Face))
+  pass  missing_override: CONTRACT_MISSING_OVERRIDE (DenseNetReference does not override map_to_labels)
+  pass  obfuscated_loader: OBFUSCATED (dynamic_code at model.py:134: exec(base64.b64decode('cHJpbnQoMSk=')) ()
+  pass  wrong_hf_revision: HF_UNREACHABLE (tripathiarpan20/densenet121-res224-all-safetensors@0000000000000000000)
+  pass  slow_load_model: LOAD_TIMEOUT (import + load_model exceeded 120.0s)
+  pass  reference pinned privately as radiant-bittensor/rad-testnet-cxr-01-5GZ9S5qgBrHCMr3kdvQ8hXdpZqz9D4eW7xvYxpRQHoVUuGKi-s1 at eb3e18da912b (.gitattributes, README.md, config.json, model.safetensors)
+  pass  no failing submission was pinned
+  pass  reference build and qualification logs saved; load 8.163s on T4
+  pass  every stored zip is stripped of .env or deleted
+  pass  deleted the test pin radiant-bittensor/rad-testnet-cxr-01-5GZ9S5qgBrHCMr3kdvQ8hXdpZqz9D4eW7xvYxpRQHoVUuGKi-s1 (R4_KEEP_PIN=1 keeps it)
+R4 exit gate passed.
+exit=0
+
+[exited with code 0]

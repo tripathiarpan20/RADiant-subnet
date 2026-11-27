@@ -26,6 +26,10 @@ report in `docs/implementation/R<n>.md`, and `TODO.md` is the launch checklist.
   fee payment and on-chain commitment from `radiant-sdk submit`, and the
   watcher; passed on testnet 292; report in
   [docs/implementation/R3.md](docs/implementation/R3.md).
+- **R4 Gates, build, qualification**: complete (27 Nov 2026). Gates g0-g9 in
+  the worker (shared static checks and g4 obfuscation with the SDK), killable
+  Modal builds, offline qualification, private HF pins; report in
+  [docs/implementation/R4.md](docs/implementation/R4.md).
 
 ## Running the validator stack
 
