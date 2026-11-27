@@ -245,8 +245,10 @@ def test_same_code_and_weights_is_a_duplicate_of_the_earlier_commit(env, tmp_pat
 
 
 def test_gpu_unavailable_is_infra_failed_and_requeued_once(env, tmp_path, monkeypatch):
-    monkeypatch.setenv("RADIANT_INFRA_RETRY_AFTER_S", "0")
+    from dataclasses import replace
+
     s, fakes = env
+    s = replace(s, infra_retry_after_s=0)
     fakes.qualify_error = R.InfraUnavailable(R.GPU_UNAVAILABLE, "no L4 within 900s")
     sid = submit(s, fakes, reference_files(tmp_path))
     with connect(s.database_url, autocommit=True) as conn:
@@ -260,8 +262,10 @@ def test_gpu_unavailable_is_infra_failed_and_requeued_once(env, tmp_path, monkey
 
 
 def test_infra_then_success_reaches_queued(env, tmp_path, monkeypatch):
-    monkeypatch.setenv("RADIANT_INFRA_RETRY_AFTER_S", "0")
+    from dataclasses import replace
+
     s, fakes = env
+    s = replace(s, infra_retry_after_s=0)
     fakes.qualify_error = R.InfraUnavailable(R.GPU_UNAVAILABLE, "no L4")
     sid = submit(s, fakes, reference_files(tmp_path))
     with connect(s.database_url, autocommit=True) as conn:
@@ -281,7 +285,61 @@ def test_unexpected_errors_are_the_validators_not_the_miners(env, tmp_path):
     r = row(s, sid)
     assert r["reason_code"] == R.WORKER_ERROR and r["next_attempt_at"] is not None
     assert run_all(s, fakes) == {}  # not retried inside the back-off
-    assert (Path(s.worker_scratch) / f"sub-{sid}" / "solution.zip").is_file()  # kept for the retry
+    # .env zip is scrubbed after g5, while weights remain on scratch and image_id is saved for resume
+    assert not (Path(s.worker_scratch) / f"sub-{sid}" / "solution.zip").exists()
+    assert r["stripped_object_key"] is not None and r["image_id"] is not None
+
+
+def test_operator_requeue_after_terminal_infra_failure_resumes_without_refetching_hf(env, tmp_path, monkeypatch):
+    from dataclasses import replace
+
+    s, fakes = env
+    s = replace(s, infra_retry_after_s=0)
+    hf_calls = 0
+    build_calls = 0
+    base_deps = fakes.deps()
+
+    def counted_weights(*a, **k):
+        nonlocal hf_calls
+        hf_calls += 1
+        return base_deps.fetch_weights(*a, **k)
+
+    def counted_build(*a, **k):
+        nonlocal build_calls
+        build_calls += 1
+        return base_deps.build(*a, **k)
+
+    deps = Deps(**{**base_deps.__dict__, "fetch_weights": counted_weights, "build": counted_build})
+    fakes.qualify_error = R.InfraUnavailable(R.GPU_UNAVAILABLE, "no T4")
+    sid = submit(s, fakes, reference_files(tmp_path))
+    with connect(s.database_url, autocommit=True) as conn:
+        from worker.admin import requeue_submission
+        from worker.pipeline import claim, process
+
+        assert process(conn, claim(conn), deps, s) == "pending"
+        assert process(conn, claim(conn), deps, s) == "infra_failed"
+        requeue_submission(conn, sid)
+        fakes.qualify_error = None
+        assert process(conn, claim(conn), deps, s) == "queued"
+    assert hf_calls == 1 and build_calls == 1  # HF token and image build used once across all retries
+    assert not any(Path(s.worker_scratch).iterdir())  # scratch removed once settled to queued
+
+
+def test_duplicate_prefers_earlier_commit_block_even_with_higher_id(env, tmp_path):
+    s, fakes = env
+    files = reference_files(tmp_path)
+    # Later commit ingested first (lower id), earlier commit ingested second (higher id).
+    later = submit(s, fakes, {**files, ".env": files[".env"] + b"# copy\n"}, hotkey=OTHER, block=200)
+    earlier = submit(s, fakes, files, hotkey=HOTKEY, block=100)
+    assert later < earlier
+    with connect(s.database_url, autocommit=True) as conn:
+        from worker.pipeline import claim, process
+
+        # Process the earlier-commit row first (or both): earlier commit must NOT be rejected as dup of later commit.
+        sub_earlier = conn.execute("SELECT * FROM submissions WHERE id = %s", (earlier,)).fetchone()
+        sub_later = conn.execute("SELECT * FROM submissions WHERE id = %s", (later,)).fetchone()
+        assert process(conn, sub_earlier, fakes.deps(), s) == "queued"
+        assert process(conn, sub_later, fakes.deps(), s) == "rejected_duplicate"
 
 
 # ── reaper ──────────────────────────────────────────────────────────────────
