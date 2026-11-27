@@ -7,6 +7,7 @@ def test_certainty_rule_and_previous_status():
         {"condition": "Silicosis", "certainty": "probable"},
         {"condition": "Pneumonia", "certainty": "possible"},
         {"condition": "Pleural Effusion", "certainty": "definite", "status": "previous"},
+        {"condition": "Normal", "certainty": "definite"},
     ]
     assert positives_from_findings(f) == {"tuberculosis", "silicosis"}
 

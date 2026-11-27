@@ -1,0 +1,106 @@
+{
+  "probe": "models",
+  "ran_at": "2026-11-27T13:36:38+00:00",
+  "host": {
+    "system": "Darwin",
+    "machine": "arm64",
+    "python": "3.12.6"
+  },
+  "exit_gate_met": true,
+  "gates": [
+    {
+      "gate": "base_model_densenet_scored",
+      "status": "passed",
+      "summary": "20 images scored; 2 of 4 conditions map to a head (uncovered: silicosis, tuberculosis)",
+      "details": {
+        "weights": "densenet121-res224-all",
+        "device": "cpu",
+        "images": 20,
+        "load_model_s": 0.17,
+        "preprocess_s": 1.12,
+        "inference_s": 1.37,
+        "heads": [
+          "Atelectasis",
+          "Consolidation",
+          "Infiltration",
+          "Pneumothorax",
+          "Edema",
+          "Emphysema",
+          "Fibrosis",
+          "Effusion",
+          "Pneumonia",
+          "Pleural_Thickening",
+          "Cardiomegaly",
+          "Nodule",
+          "Mass",
+          "Hernia",
+          "Lung Lesion",
+          "Fracture",
+          "Lung Opacity",
+          "Enlarged Cardiomediastinum"
+        ],
+        "condition_map": {
+          "fibrosis": "Fibrosis",
+          "pneumonia": "Pneumonia"
+        },
+        "uncovered_conditions": [
+          "silicosis",
+          "tuberculosis"
+        ],
+        "per_label": {
+          "fibrosis": {
+            "auroc": 0.453,
+            "positives": 4,
+            "n": 20
+          },
+          "pneumonia": {
+            "auroc": 0.493,
+            "positives": 5,
+            "n": 20
+          }
+        },
+        "source": "demo"
+      }
+    },
+    {
+      "gate": "base_model_densenet_licence",
+      "status": "passed",
+      "summary": "torchxrayvision 1.5.7: ['License :: OSI Approved :: Apache Software License']; weights trained on NIH, CheXpert, MIMIC-CXR, PadChest and others, whose data terms vary (CheXpert and MIMIC are research-use)",
+      "details": {
+        "version": "1.5.7",
+        "license": null,
+        "classifiers": [
+          "License :: OSI Approved :: Apache Software License"
+        ],
+        "head": "18 pathology outputs",
+        "home": "https://github.com/mlmed/torchxrayvision"
+      }
+    },
+    {
+      "gate": "base_model_rad_dino_licence",
+      "status": "passed",
+      "summary": "microsoft/rad-dino: licence mit, gated=False; classification head: none: image encoder only",
+      "details": {
+        "repo": "microsoft/rad-dino",
+        "license": "mit",
+        "license_link": null,
+        "gated": false,
+        "library": "transformers",
+        "head": "none: image encoder only"
+      }
+    },
+    {
+      "gate": "base_model_cxr_foundation_licence",
+      "status": "passed",
+      "summary": "google/cxr-foundation: licence health-ai-developer-foundations, gated=auto; classification head: none: embeddings (plus zero-shot text); needs a probe head",
+      "details": {
+        "repo": "google/cxr-foundation",
+        "license": "health-ai-developer-foundations",
+        "license_link": "https://developers.google.com/health-ai-developer-foundations/terms",
+        "gated": "auto",
+        "library": "cxr-foundation",
+        "head": "none: embeddings (plus zero-shot text); needs a probe head"
+      }
+    }
+  ]
+}

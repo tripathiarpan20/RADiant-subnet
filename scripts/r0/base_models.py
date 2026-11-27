@@ -60,6 +60,8 @@ CONDITION_TO_XRV = {
 }
 
 POSITIVE_CERTAINTY = {"definite", "probable"}
+# A finding that means "nothing found" is not a label.
+NO_FINDING = {"normal", "no finding", "no findings"}
 
 
 def add_arguments(p: argparse.ArgumentParser) -> None:
@@ -85,7 +87,9 @@ def positives_from_findings(findings: Iterable[dict]) -> set[str]:
             continue
         if f.get("status") in ("previous", "resolved"):
             continue
-        out.add(str(f["condition"]).strip().lower())
+        cond = str(f["condition"]).strip().lower()
+        if cond not in NO_FINDING:
+            out.add(cond)
     return out
 
 
