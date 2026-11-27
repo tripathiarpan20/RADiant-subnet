@@ -152,3 +152,38 @@ def test_host_enforces_load_timeout_even_if_sandbox_lies(manifest):
     with pytest.raises(R.SolutionRejected) as e:
         run_qualification(FakeModal(sb), None, None, DESCRIPTOR, tight, gpu_wait_s=5, echo=False)
     assert e.value.code == R.LOAD_TIMEOUT
+
+
+def test_sandbox_exit_before_start_marker_is_infra_not_rejection(manifest):
+    sb = FakeSandbox([])  # immediate EOF, never emits STARTED_MARKER
+    with pytest.raises(R.InfraUnavailable) as e:
+        run_qualification(FakeModal(sb), None, None, DESCRIPTOR, manifest, gpu_wait_s=5, echo=False)
+    assert e.value.code == R.SANDBOX_START_FAILED and sb.terminated
+
+
+def test_resource_exhausted_retries_and_becomes_gpu_unavailable(manifest):
+    class ResourceExhaustedError(Exception):
+        pass
+
+    class ExhaustedThenOkModal:
+        def __init__(self, fail_times: int):
+            self.fail_times = fail_times
+            self.calls = 0
+            self.Sandbox = self
+
+        def create(self, *a, **kw):
+            self.calls += 1
+            if self.calls <= self.fail_times:
+                raise ResourceExhaustedError("Insufficient capacity")
+            return FakeSandbox([f"{STARTED_MARKER}\n{LOADED_MARKER}\n{RESULT_PREFIX}{json.dumps(PASSED)}\n"])
+
+    # Recovers on retry
+    m = ExhaustedThenOkModal(fail_times=1)
+    r = run_qualification(m, None, None, DESCRIPTOR, manifest, gpu_wait_s=5, echo=False)
+    assert r["status"] == "passed" and m.calls == 2
+
+    # Exhausts wait_s -> GPU_UNAVAILABLE
+    m2 = ExhaustedThenOkModal(fail_times=100)
+    with pytest.raises(R.InfraUnavailable) as e:
+        run_qualification(m2, None, None, DESCRIPTOR, manifest, gpu_wait_s=0.2, echo=False)
+    assert e.value.code == R.GPU_UNAVAILABLE

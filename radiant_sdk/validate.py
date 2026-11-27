@@ -348,6 +348,12 @@ def run_qualification(modal, app, image, descriptor: dict, manifest: dict, *, ev
     return result
 
 
+def _is_capacity_error(exc: Exception) -> bool:
+    name = type(exc).__name__.lower()
+    msg = str(exc).lower()
+    return "resourceexhausted" in name or "capacity" in msg or "insufficient" in msg
+
+
 def start_sandbox(modal, cmd: list[str], kwargs: dict, *, gpu: str, wait_s: float, restart_after_s: float = 120,
                   started_marker: str = STARTED_MARKER):
     """Create a sandbox and wait for the harness's start marker; (sandbox, output queue, started_at).
@@ -374,28 +380,51 @@ def start_sandbox(modal, cmd: list[str], kwargs: dict, *, gpu: str, wait_s: floa
         attempt += 1
         attempt_end = min(deadline, now + restart_after_s)
         box: dict = {}
+        box_lock = threading.Lock()
 
-        def create(box=box) -> None:
+        def create(box=box, box_lock=box_lock) -> None:
+            sb_created = None
+            err = None
             try:
-                box["sb"] = modal.Sandbox.create(*cmd, **kwargs)
+                sb_created = modal.Sandbox.create(*cmd, **kwargs)
             except Exception as exc:  # surfaced below
-                box["error"] = exc
-            if box.get("abandoned") and "sb" in box:
+                err = exc
+            terminate_now = False
+            with box_lock:
+                if err is not None:
+                    box["error"] = err
+                elif box.get("abandoned"):
+                    terminate_now = True
+                else:
+                    box["sb"] = sb_created
+            if terminate_now and sb_created is not None:
                 try:
-                    box["sb"].terminate()  # a request we gave up on landed after all
+                    sb_created.terminate()  # a request we gave up on landed after all
                 except Exception:
                     pass
 
         th = threading.Thread(target=create, daemon=True)
         th.start()
         th.join(max(0.0, attempt_end - time.monotonic()))
-        if th.is_alive():
-            box["abandoned"] = True
+        with box_lock:
+            if "sb" not in box and "error" not in box:
+                box["abandoned"] = True
+                abandoned = True
+            else:
+                abandoned = False
+            err = box.get("error")
+            sb = box.get("sb")
+        if abandoned:
             log("qualify", f"no {gpu} scheduled after {time.monotonic() - t0:.0f}s; making a fresh request")
             continue
-        if "error" in box:
-            raise R.InfraUnavailable(R.SANDBOX_START_FAILED, f"{type(box['error']).__name__}: {box['error']}")
-        sb = box["sb"]
+        if err is not None:
+            if _is_capacity_error(err):
+                rem = deadline - time.monotonic()
+                if rem > 0:
+                    log("qualify", f"{gpu} capacity refused ({type(err).__name__}); retrying")
+                    time.sleep(min(2.0, rem))
+                continue
+            raise R.InfraUnavailable(R.SANDBOX_START_FAILED, f"{type(err).__name__}: {err}")
         raw: queue.Queue = queue.Queue()
 
         def pump(sb=sb, raw=raw) -> None:
@@ -417,22 +446,30 @@ def start_sandbox(modal, cmd: list[str], kwargs: dict, *, gpu: str, wait_s: floa
                 chunk = raw.get(timeout=left)
             except queue.Empty:
                 break
+            if chunk is None:
+                # Container exited before the harness ever printed STARTED_MARKER:
+                # image pull failure, OOM at boot, or failed isolation probe -> infra, never miner fault.
+                try:
+                    sb.terminate()
+                except Exception:
+                    pass
+                raise R.InfraUnavailable(R.SANDBOX_START_FAILED,
+                                         "sandbox exited before the harness started (no start marker)")
             seen.append(chunk)
-            started = chunk is None or any(line.strip() == started_marker for line in chunk.splitlines())
-            if not started:
+            if not any(line.strip() == started_marker for line in chunk.splitlines()):
                 continue
             out: queue.Queue = queue.Queue()
             for c in seen:
                 out.put(c)
-            if chunk is not None:
-                def relay(src=raw, dst=out) -> None:
-                    while True:
-                        item = src.get()
-                        dst.put(item)
-                        if item is None:
-                            return
 
-                threading.Thread(target=relay, daemon=True).start()
+            def relay(src=raw, dst=out) -> None:
+                while True:
+                    item = src.get()
+                    dst.put(item)
+                    if item is None:
+                        return
+
+            threading.Thread(target=relay, daemon=True).start()
             started_at = time.monotonic()
             log("qualify", f"container started after {started_at - t0:.0f}s (request {attempt})")
             return sb, out, started_at
