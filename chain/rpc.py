@@ -114,7 +114,18 @@ def fetch_chain_view(
             raise ChainError(f"subnet {netuid} does not exist")
         current_block = int(subtensor.block)
         try:
-            block_hash = subtensor.block_info().hash
+            info = subtensor.block_info(current_block)
+            block_hash = getattr(info, "hash", None) if info is not None else None
+        except TypeError:
+            try:
+                info = subtensor.block_info()
+                block_hash = getattr(info, "hash", None) if info is not None else None
+            except Exception as exc:
+                logger.warning(
+                    "Block hash lookup failed: %s — continuing with block_hash=None.",
+                    exc,
+                )
+                block_hash = None
         except Exception as exc:
             logger.warning(
                 "Block hash lookup failed: %s — continuing with block_hash=None.",

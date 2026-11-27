@@ -58,3 +58,46 @@ def test_zero_fee_era_dust_transfer_cannot_bypass_fee_hike():
     res = check_fee(_com(commit_block=1050, payment_block=999), history,
                     lambda b: _view(1), consumed=False)
     assert not res.ok and res.reason == "payment_below_fee"
+
+
+def test_watcher_handles_storage_errors_oversize_and_leaves_zip_checks_to_worker(monkeypatch):
+    import hashlib
+
+    import config
+    from campaign import store
+    from chain.watcher import TRANSIENT, ObjectStorageError, ObjectTooLarge, ingest
+
+    assert "object_too_large" not in TRANSIENT
+    assert "storage_unavailable" in TRANSIENT
+
+    recorded: list[str] = []
+    inserted: list[int] = []
+    monkeypatch.setattr(store, "rejection_reason", lambda conn, com: None)
+    monkeypatch.setattr(store, "get_campaign", lambda conn, cid: {
+        "id": cid, "status": "open", "opened_at_block": None,
+        "submission_fee_history": [{"amount_tao": "0", "recipient": RECIPIENT, "effective_from_block": 0}],
+        "manifest": {"limits": {"max_solution_zip_mb": 10, "max_solution_unzipped_mb": 50}},
+    })
+    monkeypatch.setattr(store, "get_submission", lambda conn, cid, sha: None)
+    monkeypatch.setattr(store, "record_rejection", lambda conn, com, reason: recorded.append(reason))
+    monkeypatch.setattr(store, "insert_submission", lambda conn, com, **kw: (inserted.append(1), 42)[1])
+
+    s = config.Settings.from_env({"RADIANT_S3_PREFIX": "radiant"})
+    com = _com(commit_block=100, payment_block=99)
+    com = SolutionCommitment(**{**com.__dict__, "payment_block": None, "payment_tx": None})
+
+    def raise_storage(key, cap):
+        raise ObjectStorageError("s3 503")
+
+    assert ingest(None, com, fetch_block=None, fetch_object=raise_storage, s=s).reason == "storage_unavailable"
+
+    def raise_large(key, cap):
+        raise ObjectTooLarge("too big")
+
+    assert ingest(None, com, fetch_block=None, fetch_object=raise_large, s=s).reason == "object_too_large"
+
+    # Non-zip / hostile bytes that match committed sha256 enter submissions so the worker's g1/g2 rejects them.
+    bad_zip = b"not-a-valid-zip-or-zip-slip"
+    com2 = SolutionCommitment(**{**com.__dict__, "sha256": "sha256:" + hashlib.sha256(bad_zip).hexdigest()})
+    res = ingest(None, com2, fetch_block=None, fetch_object=lambda k, c: bad_zip, s=s)
+    assert res.reason == "ingested" and res.submission_id == 42 and inserted == [1]

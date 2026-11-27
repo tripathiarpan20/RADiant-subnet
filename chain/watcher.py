@@ -39,7 +39,15 @@ ObjectFetcher = Callable[[str, int], bytes | None]   # (key, max_bytes) -> bytes
 # later). Everything else is permanent for that exact commitment, so it is
 # not re-checked on every scan.
 TRANSIENT = frozenset({"payment_block_unavailable", "payment_no_chain_access", "payment_outcome_unknown",
-                       "campaign_not_open", "object_missing_or_too_large"})
+                       "campaign_not_open", "object_missing_or_too_large", "storage_unavailable"})
+
+
+class ObjectTooLarge(Exception):
+    """The uploaded object exceeds the campaign's max_solution_zip_mb cap (permanent)."""
+
+
+class ObjectStorageError(Exception):
+    """Transient S3/storage failure while checking or fetching an object."""
 
 
 @dataclass(frozen=True)
@@ -79,8 +87,6 @@ def check_fee(com: SolutionCommitment, history: list, fetch_block: BlockFetcher 
 def ingest(conn, com: SolutionCommitment, *, fetch_block: BlockFetcher | None, fetch_object: ObjectFetcher,
            s: config.Settings) -> IngestResult:
     from campaign import store
-    from radiant_sdk.checks import code_sha256, read_zip
-    from radiant_sdk.reasons import SolutionRejected
 
     def reject(reason: str) -> IngestResult:
         store.record_rejection(conn, com, reason)
@@ -117,23 +123,29 @@ def ingest(conn, com: SolutionCommitment, *, fetch_block: BlockFetcher | None, f
                 return reject(check.reason)
 
     limits = campaign["manifest"]["limits"]
-    data = fetch_object(com.object_key, limits["max_solution_zip_mb"] * 1_000_000)
+    cap = limits["max_solution_zip_mb"] * 1_000_000
+    try:
+        data = fetch_object(com.object_key, cap)
+    except ObjectTooLarge:
+        return reject("object_too_large")
+    except ObjectStorageError as exc:
+        logger.warning("transient storage error for hotkey=%s key=%s: %s", com.hotkey[:10], com.object_key, exc)
+        return reject("storage_unavailable")
     if data is None:
         return reject("object_missing_or_too_large")
+    if len(data) > cap:
+        return reject("object_too_large")
     if "sha256:" + hashlib.sha256(data).hexdigest() != com.sha256:
         return reject("sha256_mismatch")
-    try:
-        files = read_zip(data, max_zip_mb=limits["max_solution_zip_mb"],
-                         max_unzipped_mb=limits["max_solution_unzipped_mb"])
-    except SolutionRejected as exc:
-        return reject(exc.code.lower())
-    if code_sha256(files) != com.code_sha256:
-        return reject("code_sha256_mismatch")
 
+    # Do not inflate untrusted zips inside the watcher: archive safety, code_sha256
+    # and .env stripping belong to the worker's g1/g2 gates, and ingesting here
+    # ensures malicious zips consume their payment proof instead of retrying for free.
     sid = store.insert_submission(conn, com, size_bytes=len(data), fee_exempt=exempt)
     if sid is None:  # lost a race to an identical commitment, or the proof was used in between
         return IngestResult(None, "duplicate")
-    logger.info("queued submission %d campaign=%s hotkey=%s %s", sid, com.campaign_id, com.hotkey[:10], com.sha256)
+    logger.info("ingested pending submission %d campaign=%s hotkey=%s %s",
+                sid, com.campaign_id, com.hotkey[:10], com.sha256)
     return IngestResult(sid, "ingested")
 
 
