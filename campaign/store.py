@@ -91,7 +91,7 @@ def payment_ref_used(conn, block: int, tx: int) -> bool:
 
 
 def insert_submission(conn, com, *, size_bytes: int, fee_exempt: bool) -> int | None:
-    """Insert and log a 'queued' event. None if the (campaign, sha256) slot or the fee proof is taken."""
+    """Insert as 'pending' (waiting for the gates) and log it. None if the slot or the fee proof is taken."""
     row = conn.execute(
         """INSERT INTO submissions (campaign_id, hotkey, coldkey, uid, sha256, code_sha256, object_key, size_bytes,
                                     commit_block, payment_block, payment_tx, fee_exempt)
@@ -101,7 +101,7 @@ def insert_submission(conn, com, *, size_bytes: int, fee_exempt: bool) -> int | 
          com.commit_block, com.payment_block, com.payment_tx, fee_exempt)).fetchone()
     if row is None:
         return None
-    conn.execute("INSERT INTO submission_events (submission_id, state, detail) VALUES (%s, 'queued', %s)",
+    conn.execute("INSERT INTO submission_events (submission_id, state, detail) VALUES (%s, 'pending', %s)",
                  (row["id"], Jsonb({"commit_block": com.commit_block, "payment_block": com.payment_block,
                                     "payment_tx": com.payment_tx, "fee_exempt": fee_exempt})))
     return row["id"]

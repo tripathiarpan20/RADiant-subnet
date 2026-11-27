@@ -131,11 +131,11 @@ fi
 
 echo "4. watcher ingests it"
 for i in $(seq 1 50); do
-  if curl -fsS "$API/v1/submissions/$SHA" 2>/dev/null | grep -q '"state": *"queued"'; then break; fi
+  if curl -fsS "$API/v1/submissions/$SHA" 2>/dev/null | grep -q '"submission_id"'; then break; fi
   sleep 12
   [[ $i -eq 50 ]] && { dc logs --tail 40 watcher; fail "not ingested after 10 minutes"; }
 done
-pass "queued by the watcher"
+pass "ingested by the watcher"
 
 echo "5. exactly once, and bad proofs rejected (using the real payment)"
 dc run --rm --no-deps -v "$(pwd)/scripts:/app/scripts:ro" watcher python -m scripts.r3_checks "$SHA"

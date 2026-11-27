@@ -215,7 +215,7 @@ def wait_for_intake(base: str, sha: str, wait_s: float, every_s: float = 12.0) -
             body = None  # 404 until the watcher has seen it
         if body and (body.get("submissions") or body.get("rejections")):
             for sub in body.get("submissions", []):
-                say(f"queued as submission {sub['submission_id']} ({sub['state']})")
+                say(f"accepted as submission {sub['submission_id']} ({sub['state']}); the gates run next")
             for rej in body.get("rejections", []):
                 say(f"rejected at intake: {rej['reason']}")
             return body

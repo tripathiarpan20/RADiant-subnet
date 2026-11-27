@@ -217,7 +217,8 @@ def eval_timeout_for(limits: dict, megapixels: float) -> float:
 
 
 def run_qualification(modal, app, image, descriptor: dict, manifest: dict, *, eval_timeout_s: float | None = None,
-                      gpu_wait_s: float = 900) -> dict:
+                      gpu_wait_s: float = 900, sink: list[str] | None = None, echo: bool = True) -> dict:
+    """Qualify in an offline sandbox. ``sink`` collects the sandbox's log (shown to the miner)."""
     limits, harness = manifest["limits"], manifest["harness"]
     if eval_timeout_s is None:
         from .harness import WARMUP_SHAPES
@@ -277,12 +278,18 @@ def run_qualification(modal, app, image, descriptor: dict, manifest: dict, *, ev
                     continue
                 lines.append(text)
                 if not text.startswith(RESULT_PREFIX):
-                    print(f"  | {text.rstrip()}", file=sys.stderr, flush=True)
+                    if sink is not None:
+                        sink.append(text.rstrip("\n"))
+                    if echo:
+                        print(f"  | {text.rstrip()}", file=sys.stderr, flush=True)
         sb.wait(raise_on_termination=False)
         err = sb.stderr.read()
         err = err if isinstance(err, str) else err.decode("utf-8", "replace")
         for text in err.splitlines()[-200:]:
-            print(f"  ! {text}", file=sys.stderr)
+            if sink is not None:
+                sink.append("! " + text)
+            if echo:
+                print(f"  ! {text}", file=sys.stderr)
     finally:
         try:
             sb.terminate()

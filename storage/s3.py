@@ -95,3 +95,14 @@ def fetch_bounded(s: config.Settings, key: str, max_bytes: int) -> bytes:
     if len(data) > max_bytes:
         raise ValueError(f"object exceeds {max_bytes} bytes")
     return data
+
+
+def put_object(s: config.Settings, key: str, data: bytes) -> None:
+    import hashlib
+
+    client(s, timeout_s=60).put_object(Bucket=s.s3_bucket, Key=key, Body=data, ContentType="application/zip",
+                                       ChecksumSHA256=checksum_b64("sha256:" + hashlib.sha256(data).hexdigest()))
+
+
+def delete_object(s: config.Settings, key: str) -> None:
+    client(s, timeout_s=30).delete_object(Bucket=s.s3_bucket, Key=key)

@@ -1,6 +1,6 @@
 import pytest
 
-from scripts.r0.hf import pin_repo_name
+from build.hf_pin import pin_repo_name
 
 HOTKEY = "5GrwvaEF5zXb26Fz9rcQpDWS57CtERHpNehXCPcNoHGKutQY"
 

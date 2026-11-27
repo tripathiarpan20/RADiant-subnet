@@ -184,8 +184,8 @@ def test_paid_submission_is_ingested_exactly_once(settings):
     assert run_scan(settings, chain, revealed) == ["duplicate"]  # every later scan
     with connect(settings.database_url) as conn:
         rows = store.find_submissions(conn, hashes(data)[0])
-        assert len(rows) == 1 and rows[0]["state"] == "queued" and rows[0]["uid"] == 0
-        assert [e["state"] for e in store.submission_events(conn, rows[0]["id"])] == ["queued"]
+        assert len(rows) == 1 and rows[0]["state"] == "pending" and rows[0]["uid"] == 0
+        assert [e["state"] for e in store.submission_events(conn, rows[0]["id"])] == ["pending"]
 
 
 @pytest.mark.parametrize("case,expected", [

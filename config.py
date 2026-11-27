@@ -50,6 +50,11 @@ class Settings:
     datahive_api_base: str
     datahive_api_key: str
     max_rounds_per_24h: int
+    # gate worker (R4)
+    sandbox_gpu_wait_s: int
+    infra_retry_after_s: int
+    worker_scratch: str
+    modal_environment: str
     # Hugging Face pins (R4; worker only)
     hf_pin_org: str
     hf_pin_token: str
@@ -82,6 +87,10 @@ class Settings:
             datahive_api_base=e.get("DATAHIVE_API_BASE", ""),
             datahive_api_key=e.get("DATAHIVE_API_KEY", ""),
             max_rounds_per_24h=_int(e, "MAX_ROUNDS_PER_24H", 3),
+            sandbox_gpu_wait_s=_int(e, "SANDBOX_GPU_WAIT_S", 900),
+            infra_retry_after_s=_int(e, "RADIANT_INFRA_RETRY_AFTER_S", 900),
+            worker_scratch=e.get("RADIANT_WORKER_SCRATCH", "/tmp/radiant-worker"),
+            modal_environment=e.get("RADIANT_MODAL_ENVIRONMENT", ""),
             hf_pin_org=e.get("HF_PIN_ORG", ""),
             hf_pin_token=e.get("HF_PIN_TOKEN", ""),
             api_host=e.get("RADIANT_API_HOST", "0.0.0.0"),

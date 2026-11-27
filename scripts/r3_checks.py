@@ -4,7 +4,7 @@
 
 With the submission the watcher ingested from the real chain:
 
-1. it exists exactly once, with one 'queued' event, and rescanning twice adds nothing
+1. it exists exactly once, with one intake ('pending') event, and rescanning twice adds nothing
 2. its real fee proof, re-checked against wrong terms, is rejected:
    wrong recipient, a fee above what was paid, and a signer that isn't the miner
 3. a second commitment reusing that payment is rejected (payment_ref_already_used)
@@ -50,9 +50,9 @@ def main(sha: str) -> int:
         if len(rows) != 1:
             fail(f"expected exactly one submission for {sha}, found {len(rows)}")
         sub = rows[0]
-        events = store.submission_events(conn, sub["id"])
-        if [e["state"] for e in events] != ["queued"]:
-            fail(f"expected one 'queued' event, found {[e['state'] for e in events]}")
+        events = [e["state"] for e in store.submission_events(conn, sub["id"])]
+        if not events or events[0] != "pending" or events.count("pending") != 1:
+            fail(f"expected exactly one intake ('pending') event first, found {events}")
         ok(f"submission {sub['id']} ingested exactly once (uid {sub['uid']}, payment "
            f"{sub['payment_block']}-{sub['payment_tx']}), unchanged after two more scans")
 
