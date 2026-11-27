@@ -38,6 +38,7 @@ HF_REPO_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,95}/[A-Za-z0-9][A-Za-z0-9
 SHA40_RE = re.compile(r"^[0-9a-f]{40}$")
 LOCK_REQ_RE = re.compile(r"^([A-Za-z0-9][A-Za-z0-9._-]*)(\[[A-Za-z0-9,._-]+\])?==([A-Za-z0-9.+!_-]+)$")
 LOCK_HASH_RE = re.compile(r"^--hash=sha256:[0-9a-f]{64}$")
+FORBIDDEN_LOCK_PACKAGES = frozenset({"radiant-subnet", "radiant-sdk"})
 
 # Network and process modules may not be imported by solution code.
 BANNED_MODULES = frozenset({
@@ -186,7 +187,7 @@ def check_lock(text: str) -> list[str]:
     """Every requirement pinned with ==, every one hashed, no indexes, URLs, paths or includes."""
     logical, buf = [], ""
     for raw in text.splitlines():
-        line = raw.split(" #", 1)[0].rstrip() if not raw.lstrip().startswith("#") else ""
+        line = re.split(r"(?:^|\s)#", raw, maxsplit=1)[0].rstrip()
         if line.endswith("\\"):
             buf += line[:-1] + " "
             continue
@@ -194,19 +195,28 @@ def check_lock(text: str) -> list[str]:
         if buf.strip():
             logical.append(buf.strip())
         buf = ""
+    if buf.strip():
+        logical.append(buf.strip())
     pins = []
     for entry in logical:
-        req_part = entry.split("--hash=", 1)[0].strip()
+        req_part, sep, hash_tail = entry.partition("--hash=")
+        req_part = req_part.strip()
         options = re.findall(r"(?:^|\s)(-{1,2}[A-Za-z][\w-]*)", entry)
         if req_part.startswith("-") or any(o != "--hash" for o in options):
             raise R.SolutionRejected(R.LOCK_FORBIDDEN_OPTION, f"requirements.lock: {entry[:80]} (only name==version lines)")
         if "://" in req_part or "@" in req_part or "/" in req_part.split(";", 1)[0]:
             raise R.SolutionRejected(R.LOCK_FORBIDDEN_OPTION, f"requirements.lock: {req_part} (no URLs or paths)")
         name = req_part.split(";", 1)[0].strip()
-        if not LOCK_REQ_RE.match(name):
+        m = LOCK_REQ_RE.match(name)
+        if not m:
             raise R.SolutionRejected(R.LOCK_UNPINNED, f"requirements.lock: {name} must be name==version")
-        hashes = re.findall(r"--hash=(\S+)", entry)
-        if not hashes or not all(LOCK_HASH_RE.match("--hash=" + h) for h in hashes):
+        pkg_norm = re.sub(r"[-_.]+", "-", m.group(1)).lower()
+        if pkg_norm in FORBIDDEN_LOCK_PACKAGES:
+            raise R.SolutionRejected(R.LOCK_FORBIDDEN_OPTION, f"requirements.lock: {m.group(1)} may not be overridden")
+        if not sep:
+            raise R.SolutionRejected(R.LOCK_MISSING_HASH, f"requirements.lock: {name} needs --hash=sha256:<64 hex>")
+        tokens = ("--hash=" + hash_tail).split()
+        if not tokens or not all(LOCK_HASH_RE.match(t) for t in tokens):
             raise R.SolutionRejected(R.LOCK_MISSING_HASH, f"requirements.lock: {name} needs --hash=sha256:<64 hex>")
         pins.append(name)
     return pins

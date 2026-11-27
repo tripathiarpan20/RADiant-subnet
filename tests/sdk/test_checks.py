@@ -118,9 +118,20 @@ HASH = "--hash=sha256:" + "a" * 64
     ("-e ./src", R.LOCK_FORBIDDEN_OPTION),
     ("evil @ https://x/evil.whl " + HASH, R.LOCK_FORBIDDEN_OPTION),
     ("-r other.txt", R.LOCK_FORBIDDEN_OPTION),
+    ("radiant-subnet==0.0.1 " + HASH, R.LOCK_FORBIDDEN_OPTION),
+    ("radiant_sdk==1.0.0 " + HASH, R.LOCK_FORBIDDEN_OPTION),
+    ("numpy==2.2.6 " + HASH + " extra-token", R.LOCK_MISSING_HASH),
 ])
 def test_lock_rejections(lock, code):
     assert code_of(check_lock, lock) == code
+
+
+def test_solution_image_enforces_binary_wheels_and_pth_guard():
+    from radiant_sdk.validate import _PIP_INSTALL_CMD
+
+    assert "--only-binary=:all:" in _PIP_INSTALL_CMD
+    assert "--require-hashes" in _PIP_INSTALL_CMD
+    assert ".pth" in _PIP_INSTALL_CMD
 
 
 def test_lock_accepts_uv_output_with_markers_and_continuations():

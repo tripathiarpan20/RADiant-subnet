@@ -153,16 +153,30 @@ def base_image(modal):
     return modal.Image.debian_slim(python_version="3.12").pip_install_from_requirements(str(BASE_REQUIREMENTS))
 
 
+# Refuse any wheel that installs a new .pth startup hook into site-packages
+# (which would execute before radiant_sdk.harness starts its timer).
+_PIP_INSTALL_CMD = (
+    "python -c 'import glob, site; open(\"/tmp/.pth_before\", \"w\").write("
+    "\"\\n\".join(sorted(p for d in site.getsitepackages() for p in glob.glob(d + \"/*.pth\"))))' && "
+    "pip install --no-deps --require-hashes --only-binary=:all: --no-cache-dir -r /tmp/requirements.lock && "
+    "python -c 'import glob, site, sys; before = set(open(\"/tmp/.pth_before\").read().splitlines()); "
+    "after = set(p for d in site.getsitepackages() for p in glob.glob(d + \"/*.pth\")); "
+    "extra = sorted(after - before); "
+    "sys.exit(f\"refusing wheel-installed .pth hooks: {extra}\") if extra else None'"
+)
+
+
 def solution_image(modal, code_dir: Path, weights_dir: Path, lock_text: str):
-    """Base, then the hash-locked extras, then the SDK, the code and the weights.
+    """Base, then the hash-locked wheels, then the SDK, the code and the weights.
 
     Heavy layers first, so editing model.py or the SDK reuses the cached
-    dependency layers.
+    dependency layers. ``--only-binary=:all:`` prevents source distributions
+    from executing arbitrary setup.py code with network access at build time.
     """
     image = base_image(modal)
     if any(line.strip() and not line.lstrip().startswith("#") for line in lock_text.splitlines()):
         image = image.add_local_file(str(code_dir / "requirements.lock"), "/tmp/requirements.lock", copy=True) \
-            .run_commands("pip install --no-deps --require-hashes --no-cache-dir -r /tmp/requirements.lock")
+            .run_commands(_PIP_INSTALL_CMD)
     return (
         image.env({"PYTHONPATH": "/opt/radiant", "PYTHONDONTWRITEBYTECODE": "1"})
         .add_local_dir(str(SDK_DIR), "/opt/radiant/radiant_sdk", copy=True,
