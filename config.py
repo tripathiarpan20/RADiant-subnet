@@ -30,6 +30,12 @@ class Settings:
     database_url: str
     readonly_role: str
     readonly_password: str
+    api_db_role: str
+    api_db_password: str
+    watcher_db_role: str
+    watcher_db_password: str
+    worker_db_role: str
+    worker_db_password: str
     # solution-zip bucket: MinIO locally, or Hippius / Backblaze by endpoint URL
     s3_endpoint_url: str
     s3_region: str
@@ -72,6 +78,12 @@ class Settings:
             database_url=e.get("RADIANT_DATABASE_URL", ""),
             readonly_role=e.get("RADIANT_DB_READONLY_ROLE", "radiant_readonly"),
             readonly_password=e.get("RADIANT_DB_READONLY_PASSWORD", ""),
+            api_db_role=e.get("RADIANT_DB_API_ROLE", "radiant_api"),
+            api_db_password=e.get("RADIANT_DB_API_PASSWORD", ""),
+            watcher_db_role=e.get("RADIANT_DB_WATCHER_ROLE", "radiant_watcher"),
+            watcher_db_password=e.get("RADIANT_DB_WATCHER_PASSWORD", ""),
+            worker_db_role=e.get("RADIANT_DB_WORKER_ROLE", "radiant_worker"),
+            worker_db_password=e.get("RADIANT_DB_WORKER_PASSWORD", ""),
             s3_endpoint_url=e.get("RADIANT_S3_ENDPOINT_URL", ""),
             s3_region=e.get("RADIANT_S3_REGION", "us-east-1"),
             s3_bucket=e.get("RADIANT_S3_BUCKET", "radiant-solutions"),

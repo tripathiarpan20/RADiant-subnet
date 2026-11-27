@@ -72,25 +72,89 @@ def migrate(url: str, directory: Path = MIGRATIONS_DIR) -> list[str]:
     return applied_now
 
 
+def _upsert_role(conn, role: str, password: str) -> None:
+    ident, lit = sql.Identifier(role), sql.Literal(password)
+    exists = conn.execute("SELECT 1 FROM pg_roles WHERE rolname = %s", (role,)).fetchone()
+    if exists:
+        conn.execute(sql.SQL("ALTER ROLE {} WITH LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE PASSWORD {}")
+                     .format(ident, lit))
+    else:
+        conn.execute(sql.SQL("CREATE ROLE {} WITH LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE PASSWORD {}")
+                     .format(ident, lit))
+    dbname = conn.execute("SELECT current_database() AS d").fetchone()["d"]
+    conn.execute(sql.SQL("GRANT CONNECT ON DATABASE {} TO {}").format(sql.Identifier(dbname), ident))
+    conn.execute(sql.SQL("GRANT USAGE ON SCHEMA public TO {}").format(ident))
+    conn.execute(sql.SQL("REVOKE CREATE ON SCHEMA public FROM {}").format(ident))
+
+
 def ensure_readonly_role(url: str, role: str, password: str) -> None:
     if not password:
         raise MigrationError("RADIANT_DB_READONLY_PASSWORD is not set")
-    ident, lit = sql.Identifier(role), sql.Literal(password)
+    ident = sql.Identifier(role)
     with connect(url) as conn:
-        exists = conn.execute("SELECT 1 FROM pg_roles WHERE rolname = %s", (role,)).fetchone()
-        if exists:
-            conn.execute(sql.SQL("ALTER ROLE {} WITH LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE PASSWORD {}")
-                         .format(ident, lit))
-        else:
-            conn.execute(sql.SQL("CREATE ROLE {} WITH LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE PASSWORD {}")
-                         .format(ident, lit))
-        dbname = conn.execute("SELECT current_database() AS d").fetchone()["d"]
+        _upsert_role(conn, role, password)
         conn.execute(sql.SQL("ALTER ROLE {} SET default_transaction_read_only = on").format(ident))
-        conn.execute(sql.SQL("GRANT CONNECT ON DATABASE {} TO {}").format(sql.Identifier(dbname), ident))
-        conn.execute(sql.SQL("GRANT USAGE ON SCHEMA public TO {}").format(ident))
-        conn.execute(sql.SQL("REVOKE CREATE ON SCHEMA public FROM {}").format(ident))
         conn.execute(sql.SQL("GRANT SELECT ON ALL TABLES IN SCHEMA public TO {}").format(ident))
         conn.execute(sql.SQL("ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT ON TABLES TO {}").format(ident))
+
+
+# Least-privilege grants per service. Each tuple is (privileges, table_or_sequence, is_sequence).
+SERVICE_GRANTS: dict[str, list[tuple[str, str, bool]]] = {
+    "api": [
+        ("SELECT", "schema_migrations", False),
+        ("SELECT", "campaigns", False),
+        ("SELECT", "submissions", False),
+        ("SELECT", "submission_events", False),
+        ("SELECT", "submission_logs", False),
+        ("SELECT", "intake_rejections", False),
+        ("SELECT", "registered_hotkeys", False),
+        ("SELECT, INSERT", "upload_authorizations", False),
+        ("USAGE, SELECT", "upload_authorizations_id_seq", True),
+        ("SELECT", "campaign_disqualifications", False),
+    ],
+    "watcher": [
+        ("SELECT", "campaigns", False),
+        ("SELECT, INSERT", "submissions", False),
+        ("USAGE, SELECT", "submissions_id_seq", True),
+        ("SELECT, INSERT", "submission_events", False),
+        ("USAGE, SELECT", "submission_events_id_seq", True),
+        ("SELECT, INSERT, UPDATE", "intake_rejections", False),
+        ("SELECT, INSERT, DELETE", "registered_hotkeys", False),
+    ],
+    "worker": [
+        ("SELECT", "campaigns", False),
+        ("SELECT, UPDATE", "submissions", False),
+        ("SELECT, INSERT", "submission_events", False),
+        ("USAGE, SELECT", "submission_events_id_seq", True),
+        ("SELECT, INSERT, UPDATE", "submission_logs", False),
+        ("SELECT", "registered_hotkeys", False),
+        ("SELECT", "campaign_disqualifications", False),
+        ("SELECT, DELETE", "upload_authorizations", False),
+        ("SELECT, UPDATE", "intake_rejections", False),
+    ],
+}
+
+
+def ensure_service_roles(url: str, roles: dict[str, tuple[str, str]]) -> list[str]:
+    """Provision least-privilege service roles for every service with a password configured.
+
+    ``roles`` maps service key ('api', 'watcher', 'worker') -> (role_name, password).
+    Re-revokes all table/sequence privileges first so removed grants never linger.
+    """
+    configured: list[str] = []
+    with connect(url) as conn:
+        for service, (role, password) in roles.items():
+            if not password:
+                continue
+            ident = sql.Identifier(role)
+            _upsert_role(conn, role, password)
+            conn.execute(sql.SQL("REVOKE ALL ON ALL TABLES IN SCHEMA public FROM {}").format(ident))
+            conn.execute(sql.SQL("REVOKE ALL ON ALL SEQUENCES IN SCHEMA public FROM {}").format(ident))
+            for privs, obj, is_seq in SERVICE_GRANTS[service]:
+                kind = "SEQUENCE" if is_seq else "TABLE"
+                conn.execute(sql.SQL(f"GRANT {privs} ON {kind} {{}} TO {{}}").format(sql.Identifier(obj), ident))
+            configured.append(role)
+    return configured
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -111,11 +175,17 @@ def main(argv: list[str] | None = None) -> int:
         done = migrate(url)
         if not args.skip_readonly_role:
             ensure_readonly_role(url, s.readonly_role, s.readonly_password)
+        svc_roles = ensure_service_roles(url, {
+            "api": (s.api_db_role, s.api_db_password),
+            "watcher": (s.watcher_db_role, s.watcher_db_password),
+            "worker": (s.worker_db_role, s.worker_db_password),
+        })
     except MigrationError as exc:
         print(f"migrate: {exc}", file=sys.stderr)
         return 1
     print(f"migrate: applied {done or 'nothing new'}; read-only role {s.readonly_role!r} "
-          f"{'skipped' if args.skip_readonly_role else 'granted SELECT'}")
+          f"{'skipped' if args.skip_readonly_role else 'granted SELECT'}; "
+          f"service roles: {svc_roles or 'none'}")
     return 0
 
 

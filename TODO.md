@@ -30,7 +30,7 @@ Every phase keeps this current. Anything deferred to launch goes here.
 ## Carried from R1
 
 - [ ] R3: put MinIO's S3 API behind Caddy on its own domain so miners can PUT to presigned URLs, and give the API a scoped MinIO user instead of the root credentials.
-- [ ] R3/R4: per-service Postgres roles (API read-mostly, watcher and worker scoped) instead of the owner role.
+- [x] R3/R4: per-service Postgres roles (`radiant_api`, `radiant_watcher`, `radiant_worker` provisioned by `db.migrate` and wired in `docker-compose.yml`).
 
 ## Carried from R2
 

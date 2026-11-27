@@ -56,6 +56,70 @@ def test_readonly_role_can_read_but_not_write(migrated, capsys):
             c.execute("CREATE TABLE evil (x int)")
 
 
+def test_service_roles_enforce_least_privilege(db_url, monkeypatch):
+    import uuid
+
+    suf = uuid.uuid4().hex[:8]
+    roles = {
+        "api": (f"api_{suf}", "pw-api"),
+        "watcher": (f"watcher_{suf}", "pw-watcher"),
+        "worker": (f"worker_{suf}", "pw-worker"),
+    }
+    for svc, (role, pw) in roles.items():
+        monkeypatch.setenv(f"RADIANT_DB_{svc.upper()}_ROLE", role)
+        monkeypatch.setenv(f"RADIANT_DB_{svc.upper()}_PASSWORD", pw)
+    assert mig.main([]) == 0
+    assert seed.main(["--manifest", str(FIXTURE), "--status", "open"]) == 0
+    try:
+        api_url = db_url.replace("postgres:test@", f"{roles['api'][0]}:pw-api@")
+        watcher_url = db_url.replace("postgres:test@", f"{roles['watcher'][0]}:pw-watcher@")
+        worker_url = db_url.replace("postgres:test@", f"{roles['worker'][0]}:pw-worker@")
+
+        # API: can SELECT campaigns and INSERT upload_authorizations, cannot UPDATE campaigns or INSERT submissions.
+        with psycopg.connect(api_url, autocommit=True) as c:
+            assert c.execute("SELECT count(*) FROM campaigns").fetchone()[0] == 1
+            c.execute("INSERT INTO upload_authorizations (hotkey, campaign_id, sha256, object_key, size_bytes) "
+                      "VALUES ('5H', 'testnet-cxr-01', 'sha256:x', 'k', 1)")
+            with pytest.raises(psycopg.errors.InsufficientPrivilege):
+                c.execute("UPDATE campaigns SET title = 'hacked'")
+            with pytest.raises(psycopg.errors.InsufficientPrivilege):
+                c.execute("DELETE FROM upload_authorizations")
+
+        # Watcher: can mirror registered_hotkeys and INSERT submissions, cannot UPDATE campaigns or submissions.
+        with psycopg.connect(watcher_url, autocommit=True) as c:
+            c.execute("INSERT INTO registered_hotkeys (hotkey, uid, coldkey, synced_block) VALUES ('5H', 1, '5C', 10)")
+            sid = c.execute(
+                "INSERT INTO submissions (campaign_id, hotkey, sha256, code_sha256, object_key, size_bytes, commit_block) "
+                "VALUES ('testnet-cxr-01', '5H', %s, %s, 'k', 10, 11) RETURNING id",
+                ("sha256:" + "a" * 64, "sha256:" + "b" * 64),
+            ).fetchone()[0]
+            with pytest.raises(psycopg.errors.InsufficientPrivilege):
+                c.execute("UPDATE submissions SET state = 'queued' WHERE id = %s", (sid,))
+            with pytest.raises(psycopg.errors.InsufficientPrivilege):
+                c.execute("UPDATE campaigns SET status = 'closed'")
+
+        # Worker: can UPDATE submissions, write logs, and reap upload_authorizations, cannot modify campaigns or DELETE submissions.
+        with psycopg.connect(worker_url, autocommit=True) as c:
+            c.execute("UPDATE submissions SET state = 'gating' WHERE id = %s", (sid,))
+            c.execute("INSERT INTO submission_logs (submission_id, kind, body) VALUES (%s, 'build', 'ok')", (sid,))
+            c.execute("DELETE FROM upload_authorizations")
+            with pytest.raises(psycopg.errors.InsufficientPrivilege):
+                c.execute("DELETE FROM submissions WHERE id = %s", (sid,))
+            with pytest.raises(psycopg.errors.InsufficientPrivilege):
+                c.execute("UPDATE campaigns SET title = 'x'")
+    finally:
+        pg_admin = db_url.rsplit("/", 1)[0] + "/postgres"
+        with psycopg.connect(db_url, autocommit=True) as c:
+            for _, (role, _) in roles.items():
+                c.execute(f'REVOKE ALL ON ALL TABLES IN SCHEMA public FROM "{role}"')
+                c.execute(f'REVOKE ALL ON ALL SEQUENCES IN SCHEMA public FROM "{role}"')
+                c.execute(f'REVOKE ALL ON SCHEMA public FROM "{role}"')
+                c.execute(f'REVOKE ALL ON DATABASE "{db_url.rsplit("/", 1)[1]}" FROM "{role}"')
+        with psycopg.connect(pg_admin, autocommit=True) as c:
+            for _, (role, _) in roles.items():
+                c.execute(f'DROP ROLE IF EXISTS "{role}"')
+
+
 def test_seed_is_idempotent_and_hash_stable(migrated, capsys):
     assert seed_out(capsys) == (0, f"seeded testnet-cxr-01 {FIXTURE_HASH}")
     assert seed_out(capsys) == (0, f"unchanged testnet-cxr-01 {FIXTURE_HASH}")

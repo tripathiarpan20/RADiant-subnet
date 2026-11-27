@@ -64,6 +64,12 @@ services:
       RADIANT_DATABASE_URL: postgresql://radiant:${POSTGRES_PASSWORD}@postgres:5432/radiant
       RADIANT_DB_READONLY_ROLE: ${RADIANT_DB_READONLY_ROLE:-radiant_readonly}
       RADIANT_DB_READONLY_PASSWORD: ${RADIANT_DB_READONLY_PASSWORD:?set RADIANT_DB_READONLY_PASSWORD in .env}
+      RADIANT_DB_API_ROLE: ${RADIANT_DB_API_ROLE:-radiant_api}
+      RADIANT_DB_API_PASSWORD: ${RADIANT_DB_API_PASSWORD:?set RADIANT_DB_API_PASSWORD in .env}
+      RADIANT_DB_WATCHER_ROLE: ${RADIANT_DB_WATCHER_ROLE:-radiant_watcher}
+      RADIANT_DB_WATCHER_PASSWORD: ${RADIANT_DB_WATCHER_PASSWORD:?set RADIANT_DB_WATCHER_PASSWORD in .env}
+      RADIANT_DB_WORKER_ROLE: ${RADIANT_DB_WORKER_ROLE:-radiant_worker}
+      RADIANT_DB_WORKER_PASSWORD: ${RADIANT_DB_WORKER_PASSWORD:?set RADIANT_DB_WORKER_PASSWORD in .env}
       RADIANT_S3_ENDPOINT_URL: ${RADIANT_S3_ENDPOINT_URL:-http://minio:9000}
       RADIANT_S3_REGION: ${RADIANT_S3_REGION:-us-east-1}
       RADIANT_S3_BUCKET: ${RADIANT_S3_BUCKET:-radiant-solutions}
@@ -96,7 +102,7 @@ services:
       RADIANT_S3_PREFIX: ${RADIANT_S3_PREFIX:-radiant}
       RADIANT_S3_ACCESS_KEY: ${RADIANT_S3_ACCESS_KEY:-${MINIO_ROOT_USER}}
       RADIANT_S3_SECRET_KEY: ${RADIANT_S3_SECRET_KEY:-${MINIO_ROOT_PASSWORD}}
-      RADIANT_DATABASE_URL: postgresql://radiant:${POSTGRES_PASSWORD}@postgres:5432/radiant
+      RADIANT_DATABASE_URL: postgresql://${RADIANT_DB_API_ROLE:-radiant_api}:${RADIANT_DB_API_PASSWORD}@postgres:5432/radiant
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=3)"]
       interval: 5s
@@ -112,7 +118,7 @@ services:
     environment:
       RADIANT_NETWORK: ${RADIANT_NETWORK:-test}
       RADIANT_NETUID: ${RADIANT_NETUID:-292}
-      RADIANT_DATABASE_URL: postgresql://radiant:${POSTGRES_PASSWORD}@postgres:5432/radiant
+      RADIANT_DATABASE_URL: postgresql://${RADIANT_DB_WATCHER_ROLE:-radiant_watcher}:${RADIANT_DB_WATCHER_PASSWORD}@postgres:5432/radiant
       RADIANT_S3_ENDPOINT_URL: ${RADIANT_S3_ENDPOINT_URL:-http://minio:9000}
       RADIANT_S3_REGION: ${RADIANT_S3_REGION:-us-east-1}
       RADIANT_S3_BUCKET: ${RADIANT_S3_BUCKET:-radiant-solutions}
@@ -132,7 +138,7 @@ services:
     environment:
       RADIANT_NETWORK: ${RADIANT_NETWORK:-test}
       RADIANT_NETUID: ${RADIANT_NETUID:-292}
-      RADIANT_DATABASE_URL: postgresql://radiant:${POSTGRES_PASSWORD}@postgres:5432/radiant
+      RADIANT_DATABASE_URL: postgresql://${RADIANT_DB_WORKER_ROLE:-radiant_worker}:${RADIANT_DB_WORKER_PASSWORD}@postgres:5432/radiant
       RADIANT_S3_ENDPOINT_URL: ${RADIANT_S3_ENDPOINT_URL:-http://minio:9000}
       RADIANT_S3_REGION: ${RADIANT_S3_REGION:-us-east-1}
       RADIANT_S3_BUCKET: ${RADIANT_S3_BUCKET:-radiant-solutions}
