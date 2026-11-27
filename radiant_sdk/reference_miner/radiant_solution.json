@@ -1,7 +1,7 @@
 {
   "base_class": "radiant_sdk.models.v1:ChestXRayClassifier",
   "sdk_version": "1.0.0",
-  "gpu": "L4",
+  "gpu": "T4",
   "cpus": 4,
   "batch_size": 32
 }

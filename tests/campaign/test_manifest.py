@@ -13,7 +13,7 @@ REPO = Path(__file__).resolve().parents[2]
 FIXTURE = REPO / "campaign" / "fixtures" / "testnet-cxr-01.json"
 # Pinned on 27 Nov 2026. If this changes, every stored campaign of this shape
 # would recompute to a different hash: change it only on purpose.
-FIXTURE_HASH = "sha256:cce1ee17af7dc01cf65f99ff3d85726f7aeacdfe7820b15fd181aa85044c5ab2"
+FIXTURE_HASH = "sha256:2dfaa560b35b4e45acebd998ea12b22dafb4d3e3c9a68f41838eeeaafa4803ef"
 
 
 def raw():
@@ -54,7 +54,7 @@ def test_meaning_preserving_changes_keep_the_hash():
     r = raw()
     r["labels"] = list(reversed(r["labels"]))
     r["labels"][0] = r["labels"][0].upper()
-    r["hardware"]["allowed_gpus"] = ["L40S", "L4"]
+    r["hardware"]["allowed_gpus"] = ["T4", "L40S"]
     r["emission_rule"]["start_weight"] = 0.1
     r["scoring_rule"]["curve"]["curvature"] = 2  # int vs float
     assert build_manifest(r).manifest_hash == FIXTURE_HASH

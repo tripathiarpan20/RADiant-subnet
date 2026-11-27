@@ -8,9 +8,9 @@
 # Needs in .env: HF_PIN_ORG and HF_PIN_TOKEN, and the RADIANT_S3_* bucket
 # (Hippius). Modal: your `modal setup` login on this machine, or
 # MODAL_TOKEN_ID/SECRET in .env. Uses a throwaway Postgres and the bucket
-# prefix radiant-r4gate/. Cost: two image builds (cached layers) and two L40S
-# qualifications (R4_GPU=L4 to use L4), one of which waits out the 120 s load
-# timeout: about $0.10.
+# prefix radiant-r4gate/. Cost: two image builds (cached layers) and two T4
+# qualifications (the reference miner's GPU; R4_GPU=L40S to change), one of
+# which waits out the 120 s load timeout: about $0.05.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 NAME="radiant-r4gate-pg-$$"

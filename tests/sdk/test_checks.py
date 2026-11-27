@@ -20,7 +20,7 @@ def test_reference_miner_passes_static_checks(miner_dir, manifest, tmp_path):
     p = prepare(miner_dir, tmp_path / "build")
     report = run_static_checks((tmp_path / "build" / "solution.zip").read_bytes(), manifest)
     assert report.sha256 == p.sha256 and report.code_sha256 == p.code_sha256
-    assert report.descriptor["gpu"] == "L4"
+    assert report.descriptor["gpu"] == "T4"
     assert report.env["HF_REPO_ID"] == "tripathiarpan20/densenet121-res224-all-safetensors" and report.env["HF_TOKEN"] == ""
     assert {"requirements.in", ".env.template", "miner.env.template"} <= set(p.skipped)
 
@@ -83,6 +83,7 @@ def test_banned_import_in_src_module(miner_dir, manifest):
 
 @pytest.mark.parametrize("change,code", [
     ({"gpu": "H100"}, R.GPU_NOT_ALLOWED),
+    ({"gpu": "L4"}, R.GPU_NOT_ALLOWED),
     ({"sdk_version": "2.0.0"}, R.SDK_VERSION_MISMATCH),
     ({"base_class": "radiant_sdk.models.v2:ChestXRayClassifier"}, R.BASE_CLASS_MISMATCH),
     ({"cpus": 64}, R.CPUS_OVER_LIMIT),

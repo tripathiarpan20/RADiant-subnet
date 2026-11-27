@@ -9,7 +9,7 @@
     "format": "r1"
   },
   "data_pool": {"source": "datahive", "api_version": "v1", "countries": [], "positive_certainty": ["definite", "probable"]},
-  "hardware": {"allowed_gpus": ["L4", "L40S"], "max_cpus": 8, "max_memory_mib": 32768},
+  "hardware": {"allowed_gpus": ["L40S", "T4"], "max_cpus": 8, "max_memory_mib": 32768},
   "limits": {
     "max_solution_zip_mb": 10,
     "max_solution_unzipped_mb": 50,

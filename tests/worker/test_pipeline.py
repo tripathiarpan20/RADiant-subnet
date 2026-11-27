@@ -153,7 +153,7 @@ def test_reference_miner_reaches_queued_with_a_private_pin_and_no_env_left(env, 
     r = row(s, sid)
     assert events(s, sid) == ["pending", "identity_ok", "fetched", "static_ok", "weights_ok", "stripped", "unique",
                               "built", "qualified", "pinned", "queued"]
-    assert r["pin_repo"] == f"pins/rad-testnet-cxr-01-{HOTKEY}-s{sid}" and r["gpu"] == "L4"
+    assert r["pin_repo"] == f"pins/rad-testnet-cxr-01-{HOTKEY}-s{sid}" and r["gpu"] == "T4"
     assert original_key not in fakes.bucket  # the zip with .env is gone
     stripped = fakes.bucket[r["stripped_object_key"]]
     files = read_zip(stripped, max_zip_mb=10, max_unzipped_mb=50)

@@ -150,7 +150,8 @@ HARDWARE_KEYS = {"allowed_gpus", "max_cpus", "max_memory_mib"}
 
 def validate_hardware(value: Any) -> dict[str, Any]:
     v = _section(value, "hardware", HARDWARE_KEYS)
-    gpus = sorted(set(_str_list(v.get("allowed_gpus", ["L4", "L40S"]), "hardware.allowed_gpus")))
+    # L4 is left out of the default: on 27 Nov Modal queued L4 sandboxes for 15+ minutes.
+    gpus = sorted(set(_str_list(v.get("allowed_gpus", ["L40S", "T4"]), "hardware.allowed_gpus")))
     if not gpus or set(gpus) - KNOWN_GPUS:
         raise ManifestError(f"hardware.allowed_gpus must be a non-empty subset of {sorted(KNOWN_GPUS)}")
     return {

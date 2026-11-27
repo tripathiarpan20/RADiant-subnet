@@ -76,11 +76,11 @@ def fixtures(tmp: Path) -> dict[str, tuple[bytes, str]]:
     import json
 
     ref = reference_files(tmp)
-    # L4 capacity on Modal can queue for 15+ minutes (seen on 27 Nov), so the gate
-    # qualifies on L40S unless R4_GPU says otherwise. The reference miner itself keeps L4.
-    desc = json.loads(ref["radiant_solution.json"])
-    desc["gpu"] = os.environ.get("R4_GPU", "L40S")
-    ref["radiant_solution.json"] = (json.dumps(desc, indent=2) + "\n").encode()
+    # R4_GPU qualifies the fixtures on another allowed GPU (the reference miner asks for T4).
+    if os.environ.get("R4_GPU"):
+        desc = json.loads(ref["radiant_solution.json"])
+        desc["gpu"] = os.environ["R4_GPU"]
+        ref["radiant_solution.json"] = (json.dumps(desc, indent=2) + "\n").encode()
     link = zipfile.ZipInfo("src/link.py")
     link.external_attr = 0o120777 << 16
     model = ref["model.py"].decode()
