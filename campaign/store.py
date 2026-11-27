@@ -72,7 +72,8 @@ def stored_hash_matches(row: dict[str, Any]) -> bool:
 # ── submissions (R3) ────────────────────────────────────────────────────────
 
 SUBMISSION_COLUMNS = ("id, campaign_id, hotkey, coldkey, uid, sha256, code_sha256, object_key, size_bytes, "
-                      "commit_block, payment_block, payment_tx, fee_exempt, state, created_at, updated_at")
+                      "commit_block, payment_block, payment_tx, fee_exempt, state, reason_code, reason_detail, "
+                      "pin_repo, created_at, updated_at")
 
 
 def get_submission(conn, campaign_id: str, sha256: str) -> dict[str, Any] | None:

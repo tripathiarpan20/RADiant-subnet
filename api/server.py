@@ -3,6 +3,7 @@
 R3 adds:
     POST /v1/uploads/solution      hotkey-signed request -> presigned PUT
     GET  /v1/submissions/{sha256}  state, events and any intake rejections
+    GET  /v1/submissions/{sha256}/logs   build and qualification logs (R4)
 
 R1 routes:
     GET /health                    database reachable, migrations applied
@@ -160,6 +161,8 @@ def submission(sha256: str, response: Response) -> dict[str, Any]:
         subs = store.find_submissions(conn, sha256)
         out = [{"submission_id": r["id"], "campaign_id": r["campaign_id"], "hotkey": r["hotkey"],
                 "state": r["state"], "commit_block": r["commit_block"],
+                "reason_code": r.get("reason_code"), "reason_detail": r.get("reason_detail"),
+                "pin_repo": r.get("pin_repo"),
                 "payment": None if r["payment_block"] is None else f"{r['payment_block']}-{r['payment_tx']}",
                 "events": [{"state": e["state"], "at": e["at"].isoformat()} for e in store.submission_events(conn, r["id"])]}
                for r in subs]
@@ -169,3 +172,23 @@ def submission(sha256: str, response: Response) -> dict[str, Any]:
     if not out and not rejected:
         raise HTTPException(404, "not seen on chain yet")
     return {"sha256": sha256, "submissions": out, "rejections": rejected}
+
+
+@app.get("/v1/submissions/{sha256}/logs")
+def submission_logs(sha256: str, response: Response) -> dict[str, Any]:
+    """The build and qualification logs, the only logs ever shown to miners.
+
+    Neither sandbox has evaluation data mounted, so nothing here can carry it.
+    Round sandbox output is never stored where this route can read it.
+    """
+    response.headers["Cache-Control"] = "no-store"
+    if not re.fullmatch(r"sha256:[0-9a-f]{64}", sha256):
+        raise HTTPException(400, "expected sha256:<64 hex>")
+    with connect() as conn:
+        rows = conn.execute("""SELECT s.id, l.kind, l.body FROM submissions s
+                               JOIN submission_logs l ON l.submission_id = s.id
+                               WHERE s.sha256 = %s AND l.kind IN ('build', 'qualification')
+                               ORDER BY s.id, l.kind""", (sha256,)).fetchall()
+    if not rows:
+        raise HTTPException(404, "no logs for that submission")
+    return {"sha256": sha256, "logs": [{"submission_id": r["id"], "kind": r["kind"], "body": r["body"]} for r in rows]}

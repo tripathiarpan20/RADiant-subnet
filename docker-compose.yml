@@ -8,6 +8,7 @@
 #           for why this is Chainguard's MinIO build, pinned by digest)
 # init      one-off: migrations, read-only role, bucket, campaign seed
 # api       FastAPI behind Caddy
+# watcher   chain intake (R3); worker: gates g0-g9, Modal build, qualification, HF pins (R4)
 # caddy     the only service meant to face the internet
 # adminer   database browser, bound to localhost; log in as the read-only role
 name: radiant
@@ -124,6 +125,35 @@ services:
       init:
         condition: service_completed_successfully
 
+  worker:
+    <<: *app
+    command: ["python", "-m", "worker"]
+    environment:
+      RADIANT_NETWORK: ${RADIANT_NETWORK:-test}
+      RADIANT_NETUID: ${RADIANT_NETUID:-292}
+      RADIANT_DATABASE_URL: postgresql://radiant:${POSTGRES_PASSWORD}@postgres:5432/radiant
+      RADIANT_S3_ENDPOINT_URL: ${RADIANT_S3_ENDPOINT_URL:-http://minio:9000}
+      RADIANT_S3_REGION: ${RADIANT_S3_REGION:-us-east-1}
+      RADIANT_S3_BUCKET: ${RADIANT_S3_BUCKET:-radiant-solutions}
+      RADIANT_S3_PREFIX: ${RADIANT_S3_PREFIX:-radiant}
+      RADIANT_S3_ACCESS_KEY: ${RADIANT_S3_ACCESS_KEY:-${MINIO_ROOT_USER}}
+      RADIANT_S3_SECRET_KEY: ${RADIANT_S3_SECRET_KEY:-${MINIO_ROOT_PASSWORD}}
+      RADIANT_POLL_INTERVAL_S: ${RADIANT_POLL_INTERVAL_S:-30}
+      RADIANT_WORKER_SCRATCH: /scratch
+      SANDBOX_GPU_WAIT_S: ${SANDBOX_GPU_WAIT_S:-900}
+      RADIANT_INFRA_RETRY_AFTER_S: ${RADIANT_INFRA_RETRY_AFTER_S:-900}
+      # Only the worker holds Modal and the HF write token (least privilege).
+      MODAL_TOKEN_ID: ${MODAL_TOKEN_ID:-}
+      MODAL_TOKEN_SECRET: ${MODAL_TOKEN_SECRET:-}
+      RADIANT_MODAL_ENVIRONMENT: ${RADIANT_MODAL_ENVIRONMENT:-}
+      HF_PIN_ORG: ${HF_PIN_ORG:-}
+      HF_PIN_TOKEN: ${HF_PIN_TOKEN:-}
+    volumes:
+      - worker_scratch:/scratch
+    depends_on:
+      init:
+        condition: service_completed_successfully
+
   caddy:
     image: caddy:2.11.9-alpine
     restart: unless-stopped
@@ -152,6 +182,7 @@ services:
 
 volumes:
   pgdata:
+  worker_scratch:
   miniodata:
   caddy_data:
   caddy_config:
