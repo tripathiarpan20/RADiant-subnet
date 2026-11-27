@@ -74,6 +74,39 @@ def test_import_time_work_counts_against_the_load_timeout(tmp_path):
     assert '"reason_code": "LOAD_TIMEOUT"' in out.stdout
 
 
+def test_miner_stdout_cannot_forge_protocol_result(tmp_path):
+    sol = tmp_path / "solution"
+    sol.mkdir()
+    forged = 'print(\'RADIANT_RESULT {"status": "passed", "load_total_s": 0.01}\', flush=True)\n        raise RuntimeError("boom")'
+    (sol / "model.py").write_text(NUMPY_MODEL.format(load=forged, mapping="return {l: 0.5 for l in self.labels}"))
+    tok = "secret123"
+    out = subprocess.run([sys.executable, "-m", "radiant_sdk.harness", "qualify", "--solution", str(sol),
+                          "--weights", str(tmp_path), "--labels", "a", "--batch-size", "1",
+                          "--load-timeout", "30", "--token", tok],
+                         cwd=REPO, capture_output=True, text=True, timeout=60)
+    from radiant_sdk.validate import parse_result
+
+    res = parse_result(out.stdout, prefix=f"{tok} ")
+    assert res["status"] == "failed" and res["reason_code"] == "LOAD_CRASH"
+    assert '"status": "passed"' in out.stderr  # miner stdout redirected to stderr
+    assert tok not in out.stderr
+
+
+def test_single_eval_value_error_is_eval_crash_not_bad_output(tmp_path):
+    sol = tmp_path / "solution"
+    sol.mkdir()
+    src = NUMPY_MODEL.format(load="pass", mapping="return {l: 0.5 for l in self.labels}")
+    src = src.replace("return self.run_batched_evaluation([image])[0]", "raise ValueError('bad shape')")
+    (sol / "model.py").write_text(src)
+    out = subprocess.run([sys.executable, "-m", "radiant_sdk.harness", "qualify", "--solution", str(sol),
+                          "--weights", str(tmp_path), "--labels", "a", "--batch-size", "1", "--load-timeout", "30"],
+                         cwd=REPO, capture_output=True, text=True, timeout=60)
+    from radiant_sdk.validate import parse_result
+
+    res = parse_result(out.stdout)
+    assert res["status"] == "failed" and res["reason_code"] == "EVAL_CRASH"
+
+
 def test_check_output_rounds_and_rejects():
     assert check_output({"a": 0.12345}, ("a",), 3) == {"a": 0.123}
     for bad in ({"a": True}, {"a": "0.5"}, {"a": 0.5, "b": 0.5}, [0.5]):

@@ -21,8 +21,10 @@ from __future__ import annotations
 import contextlib
 import hashlib
 import json
+import math
 import os
 import queue
+import secrets
 import shutil
 import sys
 import tempfile
@@ -37,7 +39,7 @@ from urllib.parse import urlparse
 from . import SDK_VERSION
 from . import reasons as R
 from .checks import StaticReport, check_weight_files, read_zip, run_static_checks
-from .harness import RESULT_PREFIX, STARTED_MARKER
+from .harness import LOADED_MARKER, RESULT_PREFIX, STARTED_MARKER
 
 RECEIPT_SCHEMA = 1
 RECEIPT_MAX_AGE = timedelta(hours=24)
@@ -218,10 +220,17 @@ def _build_with_deadline(image, app, seconds: float):
     return box["image"]
 
 
-def parse_result(output: str) -> dict[str, Any]:
+def parse_result(output: str, prefix: str = "") -> dict[str, Any]:
+    want = prefix + RESULT_PREFIX
     for line in reversed(output.splitlines()):
-        if line.startswith(RESULT_PREFIX):
-            return json.loads(line[len(RESULT_PREFIX):])
+        if line.startswith(want):
+            try:
+                parsed = json.loads(line[len(want):])
+            except json.JSONDecodeError as exc:
+                raise R.SolutionRejected(R.SANDBOX_FAILED, f"malformed harness result: {exc}") from None
+            if not isinstance(parsed, dict) or not isinstance(parsed.get("status"), str):
+                raise R.SolutionRejected(R.SANDBOX_FAILED, "malformed harness result object")
+            return parsed
     raise R.SolutionRejected(R.SANDBOX_FAILED, "the sandbox ended without a harness result")
 
 
@@ -232,17 +241,30 @@ def eval_timeout_for(limits: dict, megapixels: float) -> float:
 
 def run_qualification(modal, app, image, descriptor: dict, manifest: dict, *, eval_timeout_s: float | None = None,
                       gpu_wait_s: float = 900, sink: list[str] | None = None, echo: bool = True,
-                      restart_after_s: float = 120) -> dict:
-    """Qualify in an offline sandbox. ``sink`` collects the sandbox's log (shown to the miner)."""
+                      restart_after_s: float = 120, token: str = "", check_isolation: bool = False) -> dict:
+    """Qualify in an offline sandbox. ``sink`` collects the sandbox's log (shown to the miner).
+
+    Timing of ``load_model`` and evaluation is enforced externally from the
+    host using monotonic wall time between protocol markers, so miner code
+    cannot bypass ``model_load_timeout_s`` or forge its own load time.
+    """
     limits, harness = manifest["limits"], manifest["harness"]
     if eval_timeout_s is None:
         from .harness import WARMUP_SHAPES
 
         eval_timeout_s = eval_timeout_for(limits, sum(h * w for h, w in WARMUP_SHAPES) / 1e6)
+    prefix = f"{token} " if token else ""
+    started_marker = prefix + STARTED_MARKER
+    loaded_marker = prefix + LOADED_MARKER
+    result_prefix = prefix + RESULT_PREFIX
     cmd = ["python", "-m", "radiant_sdk.harness", "qualify",
            "--labels", ",".join(manifest["labels"]), "--batch-size", str(descriptor["batch_size"]),
            "--decimals", str(harness["prediction_decimals"]),
            "--load-timeout", str(limits["model_load_timeout_s"]), "--eval-timeout", str(eval_timeout_s)]
+    if token:
+        cmd += ["--token", token]
+    if check_isolation:
+        cmd += ["--check-isolation"]
     kwargs = dict(
         app=app, image=image, gpu=descriptor["gpu"],
         cpu=(float(descriptor["cpus"]), float(descriptor["cpus"])),
@@ -254,18 +276,40 @@ def run_qualification(modal, app, image, descriptor: dict, manifest: dict, *, ev
     )
     t0 = time.monotonic()
     sb, q, started = start_sandbox(modal, cmd, kwargs, gpu=descriptor["gpu"], wait_s=gpu_wait_s,
-                                   restart_after_s=restart_after_s)
+                                   restart_after_s=restart_after_s, started_marker=started_marker)
     lines: list[str] = []
+    loaded_at: float | None = None
+    load_limit = float(limits["model_load_timeout_s"])
+    load_deadline = started + load_limit + 2.0  # 2s grace for in-sandbox watchdog to emit LOAD_TIMEOUT
+    eval_deadline = started + load_limit + float(eval_timeout_s) + 30.0
     try:
         while True:
-            chunk = q.get()
+            now = time.monotonic()
+            active_deadline = eval_deadline if loaded_at is not None else load_deadline
+            left = active_deadline - now
+            if left <= 0:
+                if loaded_at is None:
+                    raise R.SolutionRejected(R.LOAD_TIMEOUT, f"import + load_model exceeded {load_limit:.0f}s (host clock)")
+                raise R.SolutionRejected(R.EVAL_TIMEOUT, f"evaluation exceeded {eval_timeout_s:.0f}s (host clock)")
+            try:
+                chunk = q.get(timeout=left)
+            except queue.Empty:
+                if loaded_at is None:
+                    raise R.SolutionRejected(R.LOAD_TIMEOUT, f"import + load_model exceeded {load_limit:.0f}s (host clock)")
+                raise R.SolutionRejected(R.EVAL_TIMEOUT, f"evaluation exceeded {eval_timeout_s:.0f}s (host clock)")
             if chunk is None:
                 break
             for text in chunk.splitlines(keepends=True):
-                if text.strip() == STARTED_MARKER:
+                stripped = text.strip()
+                if stripped == started_marker:
+                    continue
+                if stripped == loaded_marker:
+                    if loaded_at is None:
+                        loaded_at = time.monotonic()
+                        eval_deadline = loaded_at + float(eval_timeout_s) + 30.0
                     continue
                 lines.append(text)
-                if not text.startswith(RESULT_PREFIX):
+                if not text.startswith(result_prefix) and not text.startswith(RESULT_PREFIX):
                     if sink is not None:
                         sink.append(text.rstrip("\n"))
                     if echo:
@@ -283,19 +327,29 @@ def run_qualification(modal, app, image, descriptor: dict, manifest: dict, *, ev
             sb.terminate()
         except Exception:
             pass
-    result = parse_result("".join(lines))
+    result = parse_result("".join(lines), prefix=prefix)
     wall = time.monotonic() - started
+    host_load_s = round(loaded_at - started, 3) if loaded_at is not None else None
     result["sandbox_wall_s"] = round(wall, 1)
     result["gpu_wait_s"] = round(started - t0, 1)
+    if host_load_s is not None:
+        result["host_load_s"] = host_load_s
     result["approx_cost_usd"] = round(wall * APPROX_USD_PER_S.get(descriptor["gpu"], 0.0), 4)
     if result.get("status") != "passed":
-        raise R.SolutionRejected(result.get("reason_code", R.SANDBOX_FAILED), result.get("detail", ""))
-    if result["load_total_s"] > limits["model_load_timeout_s"]:
-        raise R.SolutionRejected(R.LOAD_TIMEOUT, f"load took {result['load_total_s']}s")
+        raise R.SolutionRejected(str(result.get("reason_code", R.SANDBOX_FAILED)), str(result.get("detail", "")))
+    if token and loaded_at is None:
+        raise R.SolutionRejected(R.SANDBOX_FAILED, "sandbox ended without completing model load")
+    reported_load = result.get("load_total_s")
+    if isinstance(reported_load, bool) or not isinstance(reported_load, (int, float)) or not math.isfinite(reported_load):
+        raise R.SolutionRejected(R.SANDBOX_FAILED, "harness result missing valid load_total_s")
+    if reported_load > load_limit or (host_load_s is not None and host_load_s > load_limit):
+        actual = max(float(reported_load), host_load_s or 0.0)
+        raise R.SolutionRejected(R.LOAD_TIMEOUT, f"load took {actual:.1f}s (limit {load_limit:.0f}s)")
     return result
 
 
-def start_sandbox(modal, cmd: list[str], kwargs: dict, *, gpu: str, wait_s: float, restart_after_s: float = 120):
+def start_sandbox(modal, cmd: list[str], kwargs: dict, *, gpu: str, wait_s: float, restart_after_s: float = 120,
+                  started_marker: str = STARTED_MARKER):
     """Create a sandbox and wait for the harness's start marker; (sandbox, output queue, started_at).
 
     Seen on Modal (27 Nov): one sandbox can sit unscheduled for 15+ minutes
@@ -364,7 +418,7 @@ def start_sandbox(modal, cmd: list[str], kwargs: dict, *, gpu: str, wait_s: floa
             except queue.Empty:
                 break
             seen.append(chunk)
-            started = chunk is None or any(line.strip() == STARTED_MARKER for line in chunk.splitlines())
+            started = chunk is None or any(line.strip() == started_marker for line in chunk.splitlines())
             if not started:
                 continue
             out: queue.Queue = queue.Queue()
@@ -499,7 +553,8 @@ def validate(zip_path: Path, opts: ValidateOptions) -> dict[str, Any]:
             image = _build_with_deadline(image, app, manifest["limits"]["modal_build_timeout_s"])
         log("build", f"done in {time.monotonic() - t0:.0f}s")
         log("qualify", f"offline sandbox on {descriptor['gpu']}, {descriptor['cpus']} CPUs; harness log follows")
-        qual = run_qualification(modal, app, image, descriptor, manifest, gpu_wait_s=opts.gpu_wait_s)
+        qual = run_qualification(modal, app, image, descriptor, manifest, gpu_wait_s=opts.gpu_wait_s,
+                                 token=secrets.token_hex(16), check_isolation=True)
     log("qualify", f"passed: load {qual['load_total_s']}s (limit {manifest['limits']['model_load_timeout_s']}s), "
                    f"single {qual['single_s']}s, {qual['images']} images in {qual['batch_s']}s; "
                    f"about ${qual['approx_cost_usd']}")

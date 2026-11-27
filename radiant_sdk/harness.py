@@ -42,6 +42,16 @@ from .models.v1 import ChestXRayClassifier
 RESULT_PREFIX = "RADIANT_RESULT "
 # Printed first, so the caller can tell "the container started" from "still waiting for a GPU".
 STARTED_MARKER = "RADIANT_HARNESS_STARTED"
+# Printed once import + load_model complete, so the host times loading externally.
+LOADED_MARKER = "RADIANT_HARNESS_LOADED"
+
+_PROTO_OUT = None
+_PROTO_PREFIX = ""
+_FORBIDDEN_ENV = (
+    "MODAL_TOKEN_ID", "MODAL_TOKEN_SECRET", "MODAL_IDENTITY_TOKEN",
+    "HF_TOKEN", "HF_PIN_TOKEN", "AWS_SECRET_ACCESS_KEY",
+    "RADIANT_S3_SECRET_KEY", "RADIANT_DATABASE_URL",
+)
 
 # Public warmup set: sizes like real chest X-rays, including non-square and
 # odd sizes, so a miner's resizing is exercised. Contents are deterministic.
@@ -63,15 +73,61 @@ def warmup_images(n: int = len(WARMUP_SHAPES), seed: int = 20261127) -> list[np.
     return out
 
 
+def _proto_write(line: str) -> None:
+    stream = _PROTO_OUT if _PROTO_OUT is not None else sys.stdout
+    stream.write(_PROTO_PREFIX + line + "\n")
+    stream.flush()
+
+
+def _setup_protocol_channel(token: str) -> None:
+    """Move protocol output onto a duplicated private fd and send miner stdout to stderr.
+
+    Miner prints and C-level writes to fd 1 then land on stderr (captured in
+    qualification logs) and can never forge a protocol line on stdout.
+    """
+    global _PROTO_OUT, _PROTO_PREFIX
+    _PROTO_PREFIX = f"{token} " if token else ""
+    try:
+        saved_fd = os.dup(1)
+        os.set_inheritable(saved_fd, False)
+        os.dup2(2, 1)
+        sys.stdout = sys.stderr
+        _PROTO_OUT = os.fdopen(saved_fd, "w", buffering=1, encoding="utf-8")
+    except OSError:
+        _PROTO_OUT = sys.stdout
+
+
+def _check_isolation() -> None:
+    """Active isolation probe: verify offline sandbox has no secrets and no network egress."""
+    import socket
+
+    leaked = [k for k in _FORBIDDEN_ENV if os.getenv(k)]
+    if leaked:
+        print(f"isolation probe failed: credentials present in env ({', '.join(leaked)})", file=sys.stderr, flush=True)
+        os._exit(2)
+    try:
+        conn = socket.create_connection(("1.1.1.1", 443), timeout=2)
+        conn.close()
+        print("isolation probe failed: direct IP egress reachable", file=sys.stderr, flush=True)
+        os._exit(2)
+    except OSError:
+        pass
+    try:
+        socket.getaddrinfo("huggingface.co", 443)
+        print("isolation probe failed: DNS egress reachable", file=sys.stderr, flush=True)
+        os._exit(2)
+    except OSError:
+        pass
+
+
 def emit(result: dict[str, Any]) -> None:
     sys.stdout.flush()
     sys.stderr.flush()
-    print(RESULT_PREFIX + json.dumps(result, sort_keys=True), flush=True)
+    _proto_write(RESULT_PREFIX + json.dumps(result, sort_keys=True))
 
 
 def fail(code: str, detail: str, **extra: Any) -> None:
     emit({"status": "failed", "reason_code": code, "detail": detail[-2000:], **extra})
-    sys.stdout.flush()
     os._exit(1)
 
 
@@ -184,16 +240,20 @@ def evaluate(model: ChestXRayClassifier, images: list[np.ndarray], batch_size: i
 
 def qualify(args) -> None:
     model, timing = load(args)
+    _proto_write(LOADED_MARKER)
     images = warmup_images()
     labels = tuple(model.labels)
     t0 = time.monotonic()
     with _Watchdog(args.eval_timeout, R.EVAL_TIMEOUT, "run_single_evaluation exceeded the timeout"):
         try:
-            single = check_output(model.map_to_labels(model.run_single_evaluation(images[0])), labels, args.decimals)
-        except ValueError as exc:
-            fail(R.BAD_OUTPUT, f"run_single_evaluation/map_to_labels: {exc}")
+            raw_single = model.run_single_evaluation(images[0])
+            mapped_single = model.map_to_labels(raw_single)
         except Exception:
             fail(R.EVAL_CRASH, traceback.format_exc())
+        try:
+            single = check_output(mapped_single, labels, args.decimals)
+        except ValueError as exc:
+            fail(R.BAD_OUTPUT, f"run_single_evaluation/map_to_labels: {exc}")
     single_s = time.monotonic() - t0
     preds, errors, batch_s = evaluate(model, images, args.batch_size, args.decimals, args.eval_timeout)
     if errors:
@@ -205,6 +265,7 @@ def qualify(args) -> None:
 
 def run(args) -> None:
     model, timing = load(args)
+    _proto_write(LOADED_MARKER)
     paths = sorted(Path(args.inputs).glob("*.npy"))
     images = [np.load(p, allow_pickle=False) for p in paths]
     for p, img in zip(paths, images):
@@ -216,7 +277,6 @@ def run(args) -> None:
 
 
 def main(argv: list[str] | None = None) -> None:
-    print(STARTED_MARKER, flush=True)
     p = argparse.ArgumentParser(prog="python -m radiant_sdk.harness")
     p.add_argument("mode", choices=("qualify", "run"))
     p.add_argument("--solution", default="/solution")
@@ -227,7 +287,30 @@ def main(argv: list[str] | None = None) -> None:
     p.add_argument("--decimals", type=int, default=3)
     p.add_argument("--load-timeout", type=float, required=True)
     p.add_argument("--eval-timeout", type=float, default=600.0)
+    p.add_argument("--token", default="")
+    p.add_argument("--check-isolation", action="store_true")
     args = p.parse_args(argv)
+    # Strip the protocol token from sys.argv before importing untrusted code.
+    token = args.token
+    args.token = ""
+    if argv is None:
+        cleaned: list[str] = []
+        skip_next = False
+        for item in sys.argv:
+            if skip_next:
+                skip_next = False
+                continue
+            if item == "--token":
+                skip_next = True
+                continue
+            if item.startswith("--token="):
+                continue
+            cleaned.append(item)
+        sys.argv[:] = cleaned
+    _setup_protocol_channel(token)
+    if args.check_isolation:
+        _check_isolation()
+    _proto_write(STARTED_MARKER)
     (qualify if args.mode == "qualify" else run)(args)
     sys.stdout.flush()
     os._exit(0)  # don't let miner-started threads keep the sandbox alive

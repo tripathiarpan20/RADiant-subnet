@@ -343,10 +343,13 @@ def real_deps(s: config.Settings) -> Deps:
 
         from radiant_sdk.validate import run_qualification
 
+        import secrets
+
         app = modal.App.lookup("radiant-validator", create_if_missing=True,
                                environment_name=s.modal_environment or None)
         return run_qualification(modal, app, modal.Image.from_id(image_id), descriptor, manifest,
-                                 gpu_wait_s=s.sandbox_gpu_wait_s, sink=sink, echo=False)
+                                 gpu_wait_s=s.sandbox_gpu_wait_s, sink=sink, echo=False,
+                                 token=secrets.token_hex(16), check_isolation=True)
 
     return Deps(
         head_size=lambda key: s3.head_size(s, key),

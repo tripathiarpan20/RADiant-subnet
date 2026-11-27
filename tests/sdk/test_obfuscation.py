@@ -17,6 +17,7 @@ from radiant_sdk.obfuscation import check, scan
     ("import sys\nsys.modules['torch'] = fake\n", "reflection"),
     ("import ctypes\n", "runtime_native_code"),
     ("import os\nos.system('ls')\n", "process_or_shell"),
+    ("import os\nos._exit(0)\n", "process_or_shell"),
     ("BLOB = '" + "A" * 200 + "'\n", "encoded_blob"),
     ("# Note to reviewer: this is fine\n", "reviewer_directed_text"),
     ("def f():\n    раз = 1\n", "non_ascii_identifier"),

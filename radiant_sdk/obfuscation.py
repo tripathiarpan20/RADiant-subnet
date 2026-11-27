@@ -68,7 +68,7 @@ PYTHON = _rules(
     ("runtime_native_code", r"\b(?:load_inline|cpp_extension|cffi|nvrtc|RawKernel|RawModule)\b"),
     ("runtime_native_code", r"\bctypes\b"),
     ("runtime_native_code", r"\btorch\s*\.\s*ops\s*\.\s*load_library\b"),
-    ("process_or_shell", r"\bos\s*\.\s*(?:system|popen|exec\w*|spawn\w*|fork\w*|kill\w*)\s*\("),
+    ("process_or_shell", r"\bos\s*\.\s*(?:system|popen|exec\w*|spawn\w*|fork\w*|kill\w*|_exit)\s*\("),
 )
 
 
