@@ -295,6 +295,10 @@ def test_upload_api_presigns_for_a_signed_request(settings):
     big = {**fields, "size_bytes": 11_000_000}
     assert client.post("/v1/uploads/solution",
                        json={**big, "signature": MINER.sign(upload_message(big)).hex()}).status_code == 413
+    with connect(settings.database_url) as conn:
+        conn.execute("INSERT INTO campaign_disqualifications (campaign_id, hotkey, reason) VALUES "
+                     "('testnet-cxr-01', %s, 'banned')", (MINER.ss58_address,))
+    assert client.post("/v1/uploads/solution", json=body).status_code == 403
     assert client.get(f"/v1/submissions/{sha}").status_code == 404
 
 

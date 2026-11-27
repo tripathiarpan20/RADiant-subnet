@@ -62,13 +62,23 @@ def presign_upload(s: config.Settings, *, campaign_id: str, hotkey: str, sha256:
     headers = {"Content-Type": "application/zip", "x-amz-checksum-sha256": checksum, "If-None-Match": "*",
                "Content-Length": str(size_bytes)}
     try:  # a retry may land after a successful PUT whose response was lost
-        head = client(s, timeout_s=15).head_object(Bucket=s.s3_bucket, Key=key)
+        head = client(s, timeout_s=15).head_object(Bucket=s.s3_bucket, Key=key, ChecksumMode="ENABLED")
     except ClientError as exc:
-        if exc.response["Error"]["Code"] not in ("403", "404", "NoSuchKey", "AccessDenied", "NotFound"):
+        if exc.response["Error"]["Code"] not in ("404", "NoSuchKey", "NotFound"):
             raise
     else:
         if head.get("ContentLength") != size_bytes:
             raise ValueError("upload UUID already holds a different object")
+        stored_checksum = head.get("ChecksumSHA256")
+        if stored_checksum is not None:
+            if stored_checksum != checksum:
+                raise ValueError("upload UUID already holds a different object")
+        else:
+            import hashlib
+
+            existing = fetch_bounded(s, key, size_bytes)
+            if "sha256:" + hashlib.sha256(existing).hexdigest() != sha256:
+                raise ValueError("upload UUID already holds a different object")
         return Presigned("", key, expires_in, headers, already_uploaded=True)
     # Content-Length is signed too: without it a miner could declare a small zip
     # and PUT gigabytes whose checksum they also control.

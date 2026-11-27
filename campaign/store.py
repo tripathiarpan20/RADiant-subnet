@@ -157,6 +157,12 @@ def registration(conn, hotkey: str) -> tuple[bool, bool]:
     return synced, found
 
 
+def disqualification_reason(conn, campaign_id: str, hotkey: str) -> str | None:
+    row = conn.execute("SELECT reason FROM campaign_disqualifications WHERE campaign_id = %s AND hotkey = %s",
+                       (campaign_id, hotkey)).fetchone()
+    return row["reason"] if row else None
+
+
 def uploads_in_last_hour(conn, hotkey: str) -> int:
     return conn.execute("SELECT count(*) AS n FROM upload_authorizations WHERE hotkey = %s "
                         "AND created_at > now() - interval '1 hour'", (hotkey,)).fetchone()["n"]
