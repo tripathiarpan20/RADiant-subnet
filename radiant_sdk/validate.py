@@ -36,7 +36,7 @@ from urllib.parse import urlparse
 
 from . import SDK_VERSION
 from . import reasons as R
-from .checks import StaticReport, read_zip, run_static_checks
+from .checks import StaticReport, check_weight_files, read_zip, run_static_checks
 from .harness import RESULT_PREFIX, STARTED_MARKER
 
 RECEIPT_SCHEMA = 1
@@ -90,17 +90,41 @@ def fetch_campaign(campaign_id: str, *, api_url: str | None = None, manifest_fil
 # ── Hugging Face (g5) ───────────────────────────────────────────────────────
 
 
-def fetch_weights(env: dict[str, str], max_weights_mb: int, cache: Path) -> tuple[Path, dict[str, Any]]:
+def token_write_scopes(token: str) -> list[str]:
+    """Write permissions a Hugging Face token carries ([] for a read-only or fine-grained read token)."""
+    from huggingface_hub import HfApi
+
+    auth = (HfApi().whoami(token=token).get("auth") or {}).get("accessToken") or {}
+    if auth.get("role") == "write":
+        return ["write (classic token)"]
+    fine = auth.get("fineGrained") or {}
+    return sorted({p for scope in fine.get("scoped", []) for p in scope.get("permissions", []) if "write" in p}
+                  | {p for p in fine.get("global", []) if "write" in p})
+
+
+def fetch_weights(env: dict[str, str], max_weights_mb: int, cache: Path,
+                  formats: list[str] | None = None) -> tuple[Path, dict[str, Any]]:
     from huggingface_hub import HfApi, snapshot_download
     from huggingface_hub.utils import HfHubHTTPError
 
     repo, revision, token = env["HF_REPO_ID"], env["HF_REVISION"], env["HF_TOKEN"] or False
+    if token:
+        # The token travels inside the zip to the validator: it must not be able to write anything.
+        try:
+            writes = token_write_scopes(token)
+        except HfHubHTTPError as exc:
+            raise R.SolutionRejected(R.HF_UNREACHABLE, f"HF_TOKEN rejected: {str(exc).splitlines()[0]}") from None
+        if writes:
+            raise R.SolutionRejected(R.HF_TOKEN_WRITE_SCOPE,
+                                     f"HF_TOKEN can {', '.join(writes)}; use a fine-grained read-only token "
+                                     "scoped to this one repo (it is uploaded with your solution)")
     try:
         info = HfApi().model_info(repo, revision=revision, files_metadata=True, token=token)
     except HfHubHTTPError as exc:
         raise R.SolutionRejected(R.HF_UNREACHABLE, f"{repo}@{revision}: {str(exc).splitlines()[0]}") from None
     if info.sha != revision:
         raise R.SolutionRejected(R.HF_REVISION_MISMATCH, f"{revision} resolved to {info.sha}")
+    check_weight_files([s.rfilename for s in info.siblings], formats or ["safetensors"])
     total = sum(s.size or 0 for s in info.siblings)
     if total > max_weights_mb * 1_000_000:
         raise R.SolutionRejected(R.HF_WEIGHTS_TOO_LARGE, f"{total / 1e6:.0f} MB, over {max_weights_mb} MB")
@@ -345,7 +369,8 @@ def validate(zip_path: Path, opts: ValidateOptions) -> dict[str, Any]:
     if opts.static_only:
         return {"status": "static_passed", "sha256": report.sha256, "code_sha256": report.code_sha256}
 
-    weights_dir, weights = fetch_weights(report.env, manifest["limits"]["max_weights_mb"], opts.cache_dir / "hf")
+    weights_dir, weights = fetch_weights(report.env, manifest["limits"]["max_weights_mb"], opts.cache_dir / "hf",
+                                         manifest["gates"].get("weights_formats", ["safetensors"]))
     log("weights", f"{weights['repo']}@{weights['revision'][:12]}: {weights['files']} files, "
                    f"{weights['bytes'] / 1e6:.1f} MB, hashes match")
 

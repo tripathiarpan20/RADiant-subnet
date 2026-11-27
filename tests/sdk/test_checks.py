@@ -154,3 +154,16 @@ def test_symlink_missing_file_and_size_caps(miner_dir, manifest):
     noisy = {**files, "src/noise.txt": os.urandom(1_500_000).hex().encode()}
     assert code_of(run_static_checks, zip_of(noisy), small) == R.ZIP_TOO_LARGE
     assert code_of(run_static_checks, b"not a zip", manifest) == R.ZIP_INVALID
+
+
+def test_weights_repo_must_be_safetensors_only():
+    from radiant_sdk.checks import check_weight_files
+
+    check_weight_files(["model.safetensors", "config.json", "README.md", ".gitattributes"], ["safetensors"])
+    for bad in (["model.pt", "config.json"], ["model.safetensors", "extra.bin"], ["weights.pkl"],
+                ["config.json", "README.md"]):
+        assert code_of(check_weight_files, bad, ["safetensors"]) == R.HF_WEIGHTS_FORMAT
+
+
+def test_manifest_pins_weights_formats(manifest):
+    assert manifest["gates"]["weights_formats"] == ["safetensors"]

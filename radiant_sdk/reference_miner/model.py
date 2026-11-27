@@ -5,10 +5,10 @@ onto the campaign's labels where a sensible head exists; for labels it has no
 output for (tuberculosis and silicosis among them) ``map_to_labels`` returns
 0.0, as decided on 27 Nov 2026. It therefore scores at chance on those labels.
 
-Weights: the public Hugging Face repo torchxrayvision/densenet121-res224-all
-(Apache-2.0), pinned by commit in .env. Its model.pt is a pickled
-torchxrayvision module, so it is unpickled (weights_only=False) inside the
-offline sandbox, and config.json supplies the labels and thresholds.
+Weights: torchxrayvision's densenet121-res224-all (Apache-2.0), converted to
+safetensors by scripts/publish_reference_weights.py and published under the
+RADiant Hugging Face org, pinned by commit in .env. Campaigns accept only
+safetensors weights, which cannot run code when loaded.
 """
 
 from __future__ import annotations
@@ -57,31 +57,27 @@ class DenseNetReference(ChestXRayClassifier):
         import torch
 
         self.device = device if (device != "cuda" or torch.cuda.is_available()) else "cpu"
-        self.load_model_checkpoint(Path(weights_dir) / "model.pt")
+        self.load_model_checkpoint(Path(weights_dir) / "model.safetensors")
         # Warm up so the first scored batch doesn't pay for CUDA kernel selection.
         with torch.no_grad():
             self.model(torch.zeros(1, 1, INPUT_SIZE, INPUT_SIZE, device=self.device))
 
     def load_model_checkpoint(self, path: Path) -> None:
-        """Rebuild the network the way torchxrayvision's own loader does.
+        """torchxrayvision's DenseNet with the safetensors state_dict and config.json.
 
-        model.pt pickles an older torchxrayvision DenseNet, so only its
-        state_dict is taken. The label order and operating-point thresholds
-        come from the repo's config.json; with thresholds set, forward()
-        returns calibrated probabilities.
+        config.json gives the output order (``labels``) and the operating-point
+        thresholds; with thresholds set, forward() returns calibrated
+        probabilities, exactly as torchxrayvision's own loader does.
         """
         import json
 
         import torch
         import torchxrayvision as xrv
+        from safetensors.torch import load_file
 
         config = json.loads((Path(path).parent / "config.json").read_text())
-        saved = torch.load(path, map_location="cpu", weights_only=False)
-        for mod in saved.modules():  # torchxrayvision's patch for old pickles
-            if not hasattr(mod, "_non_persistent_buffers_set"):
-                mod._non_persistent_buffers_set = set()
         model = xrv.models.DenseNet(num_classes=len(config["labels"]))
-        model.load_state_dict(saved.state_dict())
+        model.load_state_dict(load_file(str(path)))
         model.op_threshs = torch.tensor(config["op_threshs"])  # set after loading, as torchxrayvision does
         self.model = model.eval().to(self.device)
         self.heads = list(config["labels"])

@@ -13,7 +13,7 @@ from db.connection import connect
 
 REPO = Path(__file__).resolve().parents[2]
 FIXTURE = REPO / "campaign" / "fixtures" / "testnet-cxr-01.json"
-FIXTURE_HASH = "sha256:65ae30b2cc6ae9077887009f119dcaca37cc32328d868ca6c56204a29e183510"
+FIXTURE_HASH = "sha256:cce1ee17af7dc01cf65f99ff3d85726f7aeacdfe7820b15fd181aa85044c5ab2"
 
 
 @pytest.fixture

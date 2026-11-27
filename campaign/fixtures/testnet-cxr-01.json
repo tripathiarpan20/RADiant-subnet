@@ -35,7 +35,7 @@
     "weights": {"quality": 0.7, "speed": 0.15, "cost": 0.15},
     "overtake_epsilon": 0.01
   },
-  "gates": {"obfuscation_rules": "radiant-v1"},
+  "gates": {"obfuscation_rules": "radiant-v1", "weights_formats": ["safetensors"]},
   "emission_rule": {"name": "linear_decay", "start_weight": 0.1, "floor_weight": 0.02, "decay_blocks": 201600},
   "submission_fee": {"amount_tao": "0.01", "recipient": "5GrwvaEF5zXb26Fz9rcQpDWS57CtERHpNehXCPcNoHGKutQY"},
   "visibility": {

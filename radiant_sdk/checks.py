@@ -211,6 +211,31 @@ def check_lock(text: str) -> list[str]:
     return pins
 
 
+# ── g5: which files a weights repo may hold ─────────────────────────────────
+
+WEIGHT_SUFFIXES = {"safetensors": (".safetensors",)}
+REPO_TEXT_SUFFIXES = (".json", ".txt", ".md", ".yaml", ".yml")
+REPO_TEXT_NAMES = (".gitattributes", "LICENSE", "README")
+
+
+def check_weight_files(filenames: list[str], formats: list[str]) -> None:
+    """Every file is a weight file in an allowed format or small text (config, card).
+
+    Pickle-based checkpoints (.pt, .pth, .bin, .ckpt, .pkl) run code when
+    loaded, so they are refused even though the sandbox would contain them:
+    anyone who forks a revealed solution loads these weights on their own machine.
+    """
+    allowed = tuple(sfx for f in formats for sfx in WEIGHT_SUFFIXES[f])
+    bad = [n for n in filenames
+           if not n.lower().endswith(allowed + REPO_TEXT_SUFFIXES) and PurePosixPath(n).name not in REPO_TEXT_NAMES]
+    if bad:
+        raise R.SolutionRejected(R.HF_WEIGHTS_FORMAT,
+                                 f"{', '.join(sorted(bad)[:5])}: weights must be {' or '.join(allowed)}; "
+                                 "convert with safetensors.torch.save_file")
+    if not any(n.lower().endswith(allowed) for n in filenames):
+        raise R.SolutionRejected(R.HF_WEIGHTS_FORMAT, f"no {' or '.join(allowed)} file in the repo")
+
+
 # ── g3: the contract, by AST ────────────────────────────────────────────────
 
 

@@ -13,7 +13,7 @@ REPO = Path(__file__).resolve().parents[2]
 FIXTURE = REPO / "campaign" / "fixtures" / "testnet-cxr-01.json"
 # Pinned on 27 Nov 2026. If this changes, every stored campaign of this shape
 # would recompute to a different hash: change it only on purpose.
-FIXTURE_HASH = "sha256:65ae30b2cc6ae9077887009f119dcaca37cc32328d868ca6c56204a29e183510"
+FIXTURE_HASH = "sha256:cce1ee17af7dc01cf65f99ff3d85726f7aeacdfe7820b15fd181aa85044c5ab2"
 
 
 def raw():
@@ -155,3 +155,11 @@ def test_quality_curve_matches_plan_table(auroc, q):
 def test_default_curve_slopes():
     below, above = curve_slopes({"chance": 0.5, "knee": 0.8, "knee_value": 0.8, "curvature": 2.0})
     assert below == pytest.approx(2.667, abs=1e-3) and above == pytest.approx(2.0)
+
+
+def test_weights_formats_default_and_validation():
+    assert build_manifest(minimal()).pinned["gates"]["weights_formats"] == ["safetensors"]
+    r = minimal()
+    r["gates"] = {"weights_formats": ["pickle"]}
+    with pytest.raises(ValueError, match="weights_formats"):
+        build_manifest(r)

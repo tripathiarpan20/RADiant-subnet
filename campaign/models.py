@@ -345,7 +345,10 @@ def scoring_warnings(rule: Mapping[str, Any]) -> list[str]:
 
 # ── gates and emissions ─────────────────────────────────────────────────────
 
-GATES_KEYS = {"obfuscation_rules"}
+GATES_KEYS = {"obfuscation_rules", "weights_formats"}
+# Weight file formats g5 accepts. safetensors cannot execute code when loaded,
+# unlike pickle-based .pt/.bin checkpoints (decided 27 Nov).
+WEIGHT_FORMATS = ("safetensors",)
 
 
 def validate_gates(value: Any) -> dict[str, Any]:
@@ -353,7 +356,10 @@ def validate_gates(value: Any) -> dict[str, Any]:
     rules = v.get("obfuscation_rules", "radiant-v1")
     if rules != "radiant-v1":
         raise ManifestError("gates.obfuscation_rules must be 'radiant-v1'")
-    return {"obfuscation_rules": rules}
+    formats = _str_list(v.get("weights_formats", ["safetensors"]), "gates.weights_formats")
+    if not formats or set(formats) - set(WEIGHT_FORMATS):
+        raise ManifestError(f"gates.weights_formats must be a non-empty subset of {list(WEIGHT_FORMATS)}")
+    return {"obfuscation_rules": rules, "weights_formats": sorted(set(formats))}
 
 
 EMISSION_KEYS = {"name", "start_weight", "floor_weight", "decay_blocks"}

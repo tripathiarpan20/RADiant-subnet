@@ -15,6 +15,7 @@ radiant-sdk = "radiant_sdk.cli:main"
 [project.optional-dependencies]
 # What `radiant-sdk validate` needs on a miner's machine.
 sdk = [
+    "safetensors>=0.4",
     "requests>=2.32",
     "huggingface_hub>=0.26",
     "modal>=1.4",
