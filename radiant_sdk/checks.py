@@ -91,7 +91,8 @@ def read_zip(data: bytes, *, max_zip_mb: int, max_unzipped_mb: int) -> dict[str,
         if info.is_dir():
             continue
         p = PurePosixPath(name)
-        if name.startswith("/") or "\\" in name or ".." in p.parts or not p.parts or ":" in p.parts[0]:
+        if (name.startswith("/") or "\\" in name or ".." in p.parts or "." in name.split("/")
+                or "//" in name or name != p.as_posix() or not p.parts or ":" in p.parts[0]):
             raise R.SolutionRejected(R.PATH_ESCAPE, name)
         if stat.S_ISLNK(info.external_attr >> 16):
             raise R.SolutionRejected(R.SYMLINK, name)
@@ -265,21 +266,42 @@ def _banned_imports(tree: ast.AST, path: str) -> None:
             fn = node.func
             is_dyn = (isinstance(fn, ast.Name) and fn.id == "__import__") or \
                      (isinstance(fn, ast.Attribute) and fn.attr == "import_module")
-            if is_dyn and node.args and isinstance(node.args[0], ast.Constant) and isinstance(node.args[0].value, str):
-                names = [node.args[0].value]
+            if is_dyn:
+                arg_node = node.args[0] if node.args else next(
+                    (kw.value for kw in node.keywords if kw.arg == "name"), None)
+                if isinstance(arg_node, ast.Constant) and isinstance(arg_node.value, str):
+                    names = [arg_node.value]
         for n in names:
             if _module_root(n) in BANNED_MODULES:
                 raise R.SolutionRejected(R.BANNED_IMPORT, f"{path}:{node.lineno} imports {n}")
 
 
+def _dotted_name(node: ast.AST) -> str | None:
+    parts: list[str] = []
+    cur = node
+    while isinstance(cur, ast.Attribute):
+        parts.append(cur.attr)
+        cur = cur.value
+    if isinstance(cur, ast.Name):
+        parts.append(cur.id)
+        return ".".join(reversed(parts))
+    return None
+
+
 def _base_aliases(tree: ast.Module, module: str, cls: str) -> tuple[set[str], set[str]]:
-    """Names bound to the base class, and names bound to its module."""
+    """Names bound to the base class, and dotted/short names bound to its module."""
     direct, modules = set(), set()
+    parent, _, leaf = module.rpartition(".")
     for node in tree.body:
-        if isinstance(node, ast.ImportFrom) and node.module == module and node.level == 0:
-            direct |= {a.asname or a.name for a in node.names if a.name == cls}
+        if isinstance(node, ast.ImportFrom) and node.level == 0:
+            if node.module == module:
+                direct |= {a.asname or a.name for a in node.names if a.name == cls}
+            elif parent and node.module == parent:
+                modules |= {a.asname or a.name for a in node.names if a.name == leaf}
         elif isinstance(node, ast.Import):
-            modules |= {a.asname for a in node.names if a.name == module and a.asname}
+            for a in node.names:
+                if a.name == module:
+                    modules.add(a.asname or a.name)
     return direct, modules
 
 
@@ -305,7 +327,7 @@ def check_contract(files: Mapping[str, bytes], base_class: str) -> str:
         for base in node.bases:
             if (isinstance(base, ast.Name) and base.id in direct) or (
                     isinstance(base, ast.Attribute) and base.attr == cls
-                    and isinstance(base.value, ast.Name) and base.value.id in modules):
+                    and _dotted_name(base.value) in modules):
                 candidates.append(node)
                 break
     if not candidates:

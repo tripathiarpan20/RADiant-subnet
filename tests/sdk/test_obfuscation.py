@@ -41,3 +41,8 @@ def test_check_raises_obfuscated_with_location():
     with pytest.raises(R.SolutionRejected) as e:
         check({"src/util.py": b"ok = 1\nexec(code)\n"})
     assert e.value.code == R.OBFUSCATED and "src/util.py:2" in e.value.detail
+
+
+def test_non_ascii_identifier_names_the_actual_non_ascii_char():
+    found = scan({"model.py": "foo_α = 1\n".encode()})
+    assert found and found[0][0] == "non_ascii_identifier" and "GREEK SMALL LETTER ALPHA" in found[0][3]

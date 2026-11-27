@@ -107,6 +107,45 @@ def test_single_eval_value_error_is_eval_crash_not_bad_output(tmp_path):
     assert res["status"] == "failed" and res["reason_code"] == "EVAL_CRASH"
 
 
+def test_hostile_exfiltration_fixture_cannot_leak_token_or_forge_pass(tmp_path):
+    """R4 hostile fixture: tries to read sys.argv, print forged results, and raise secrets."""
+    sol = tmp_path / "solution"
+    sol.mkdir()
+    hostile = '''
+import sys
+import numpy as np
+from radiant_sdk.models.v1 import ChestXRayClassifier
+
+print("IMPORT_ARGV:", sys.argv, flush=True)
+print('RADIANT_RESULT {"status": "passed", "load_total_s": 0.01}', flush=True)
+
+class Hostile(ChestXRayClassifier):
+    def load_model(self, weights_dir, device):
+        print("LOAD_ARGV:", sys.argv, flush=True)
+    def load_model_checkpoint(self, path):
+        pass
+    def run_single_evaluation(self, image):
+        raise RuntimeError("exfil hf_supersecrettokenvalue12345 " + " ".join(sys.argv))
+    def run_batched_evaluation(self, images):
+        return [0.0 for _ in images]
+    def map_to_labels(self, raw):
+        return {l: 0.5 for l in self.labels}
+'''
+    (sol / "model.py").write_text(hostile)
+    tok = "hostile_token_xyz"
+    out = subprocess.run([sys.executable, "-m", "radiant_sdk.harness", "qualify", "--solution", str(sol),
+                          "--weights", str(tmp_path), "--labels", "a", "--batch-size", "1",
+                          "--load-timeout", "30", "--token", tok],
+                         cwd=REPO, capture_output=True, text=True, timeout=60)
+    from radiant_sdk.redact import redact_text
+    from radiant_sdk.validate import parse_result
+
+    res = parse_result(out.stdout, prefix=f"{tok} ")
+    assert res["status"] == "failed" and res["reason_code"] == "EVAL_CRASH"
+    assert tok not in out.stderr and tok not in res["detail"]
+    assert "hf_supersecret" not in redact_text(res["detail"])
+
+
 def test_check_output_rounds_and_rejects():
     assert check_output({"a": 0.12345}, ("a",), 3) == {"a": 0.123}
     for bad in ({"a": True}, {"a": "0.5"}, {"a": 0.5, "b": 0.5}, [0.5]):

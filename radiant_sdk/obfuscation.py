@@ -118,8 +118,9 @@ def scan(files: Mapping[str, bytes], rule_set: str = "radiant-v1") -> list[tuple
                         findings.append((name, path, n, line.strip()[:120]))
             bad = _non_ascii_identifier(text)
             if bad is not None:
+                ch = next((c for c in bad[1] if not c.isascii()), bad[1][0])
                 findings.append(("non_ascii_identifier", path, bad[0],
-                                 f"{bad[1]!r} ({unicodedata.name(bad[1][0], '?')})"))
+                                 f"{bad[1]!r} ({unicodedata.name(ch, '?')})"))
     return findings
 
 

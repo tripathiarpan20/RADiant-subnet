@@ -175,3 +175,15 @@ def test_fee_recipient_comes_from_env_when_the_file_has_none(monkeypatch):
     monkeypatch.delenv("RADIANT_FEE_RECIPIENT")
     with pytest.raises(ManifestError, match="RADIANT_FEE_RECIPIENT"):
         load_manifest_file(FIXTURE)
+
+
+def test_quality_curve_clamps_floating_point_overshoot_and_rejects_dup_label_weights():
+    curve = {"chance": 0.5, "knee": 0.8, "knee_value": 0.8, "curvature": 2.5}
+    val = quality_curve(1.0 + 1e-16, curve)
+    assert isinstance(val, float) and val == 1.0
+
+    r = minimal()
+    r["labels"] = ["tb", "pneumonia"]
+    r["scoring_rule"] = {"label_weights": {"TB": 1.0, "tb": 2.0, "pneumonia": 1.0}}
+    with pytest.raises(ManifestError, match="label_weights"):
+        build_manifest(r)

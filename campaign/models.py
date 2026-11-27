@@ -251,6 +251,7 @@ def quality_curve(m: float, curve: Mapping[str, float]) -> float:
         return 0.0
     if m <= k:
         return qk * (m - m0) / (k - m0)
+    m = min(m, 1.0)  # prevent floating-point overshoot (1.0 + eps) from taking a negative base to a fractional power
     return qk + (1 - qk) * (1 - (1 - (m - k) / (1 - k)) ** p)
 
 
@@ -309,7 +310,7 @@ def validate_scoring_rule(value: Any, labels: list[str]) -> dict[str, Any]:
         if not isinstance(lw_raw, Mapping):
             raise ManifestError("scoring_rule.label_weights must be an object")
         lw = {str(k).strip().lower(): val for k, val in lw_raw.items()}
-        if set(lw) != set(labels):
+        if len(lw) != len(lw_raw) or set(lw) != set(labels):
             raise ManifestError("scoring_rule.label_weights must name every label exactly once")
         label_weights = {k: _num(lw[k], f"scoring_rule.label_weights.{k}", lo=0.0, hi=100.0, lo_open=True)
                          for k in labels}

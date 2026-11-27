@@ -55,6 +55,7 @@ def test_missing_override_gets_the_same_code_from_sdk_and_validator(miner_dir, m
     ("import socket\nfrom radiant_sdk.models.v1 import ChestXRayClassifier\n", R.BANNED_IMPORT),
     ("from urllib.request import urlopen\n", R.BANNED_IMPORT),
     ("import importlib\nx = importlib.import_module('subprocess')\n", R.BANNED_IMPORT),
+    ("import importlib\nx = importlib.import_module(name='socket')\n", R.BANNED_IMPORT),
     ("x = __import__('ctypes')\n", R.BANNED_IMPORT),
     ("def broken(:\n", R.SYNTAX_ERROR),
     ("class A:\n    pass\n", R.CONTRACT_NO_SUBCLASS),
@@ -72,8 +73,12 @@ def test_two_subclasses_and_module_alias(miner_dir, manifest):
            f"class A(v1.ChestXRayClassifier):\n{methods}class B(v1.ChestXRayClassifier):\n{methods}")
     files = {**reference_files(miner_dir), "model.py": two.encode()}
     assert code_of(run_static_checks, zip_of(files), manifest) == R.CONTRACT_MULTIPLE_SUBCLASSES
-    one = f"import radiant_sdk.models.v1 as v1\nclass A(v1.ChestXRayClassifier):\n{methods}"
-    run_static_checks(zip_of({**files, "model.py": one.encode()}), manifest)
+    for valid_src in (
+        f"import radiant_sdk.models.v1 as v1\nclass A(v1.ChestXRayClassifier):\n{methods}",
+        f"import radiant_sdk.models.v1\nclass A(radiant_sdk.models.v1.ChestXRayClassifier):\n{methods}",
+        f"from radiant_sdk.models import v1\nclass A(v1.ChestXRayClassifier):\n{methods}",
+    ):
+        run_static_checks(zip_of({**files, "model.py": valid_src.encode()}), manifest)
 
 
 def test_banned_import_in_src_module(miner_dir, manifest):
@@ -144,6 +149,8 @@ def test_lock_accepts_uv_output_with_markers_and_continuations():
 @pytest.mark.parametrize("extra,code", [
     ({"../evil.py": b"x"}, R.PATH_ESCAPE),
     ({"/abs.py": b"x"}, R.PATH_ESCAPE),
+    ({"src/./dup.py": b"x = 1\n"}, R.PATH_ESCAPE),
+    ({"src//dup.py": b"x = 1\n"}, R.PATH_ESCAPE),
     ({"src/weights.pt": b"\x80\x02binary"}, R.OPAQUE_BINARY),
     ({"src/inner.zip": b"PK\x03\x04rest"}, R.NESTED_ARCHIVE),
     ({"notes.txt": b"hi"}, R.UNEXPECTED_FILE),

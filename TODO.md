@@ -19,7 +19,8 @@ Every phase keeps this current. Anything deferred to launch goes here.
 
 ## Storage checks (moved from R0 to R3)
 
-- [ ] Run `python -m scripts.r0 storage` with Hippius and Backblaze bucket credentials (`R0_<PROVIDER>_S3_*`), and pick the provider whose presigned PUT enforces both the checksum and `If-None-Match`.
+- [x] Run `python -m scripts.r0 storage` against Hippius (passed on 27 Nov: checksum, `If-None-Match`, privacy and `Content-Length` all enforced).
+- [ ] Optional backup provider: run `python -m scripts.r0 storage --providers backblaze` if Backblaze credentials are provisioned.
 
 ## Hugging Face checks (moved from R0 to R4)
 
@@ -33,7 +34,7 @@ Every phase keeps this current. Anything deferred to launch goes here.
 
 ## Carried from R2
 
-- [ ] R3: `radiant-sdk submit` presign, PUT, fee payment and commitment (it stops after the receipt check today), and `status` against the intake API.
+- [x] R3: `radiant-sdk submit` presign, PUT, fee payment and commitment, and `status` against the intake API.
 - [x] R4: g7 builds in a killable child process.
 - [ ] R6: time evaluation from outside the round sandbox (the harness's own timings are for reports only).
 - [x] R4: a qualification sandbox that never starts is `infra_failed`, requeued once after a back-off; stuck requests are replaced every 2 min.
@@ -66,7 +67,7 @@ Every phase keeps this current. Anything deferred to launch goes here.
 - [x] R4: orphan reaper (worker/reaper.py): never-committed uploads after 48 h, and permanently refused ones, never another miner's.
 - [x] R4: the stored zip is stripped of `.env` after g5 and on any rejection; zips refused at intake are reaped.
 - [x] R4: per-campaign disqualified hotkeys (g0, `campaign_disqualifications`).
-- [ ] R4 follow-up: the upload API should also refuse disqualified hotkeys (Pareton does), and an operator CLI to disqualify and requeue.
+- [x] R4 follow-up: the upload API refuses disqualified hotkeys (`campaign_disqualifications`), and `worker.admin` provides operator CLIs to disqualify/undisqualify and requeue.
 - [ ] R8: rate limiting at Caddy for the public API, and alerts on watcher scan failures and spikes in intake rejections.
 
 ## Found in R4
