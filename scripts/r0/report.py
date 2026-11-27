@@ -88,3 +88,14 @@ def write_results(probe: str, results: list[GateResult], out_dir: Path = RESULTS
     path = out_dir / f"{probe}.json"
     path.write_text(json.dumps(doc, indent=2, sort_keys=False) + "\n")
     return path
+
+
+def merge_previous(probe: str, results: list[GateResult], out_dir: Path = RESULTS_DIR) -> list[GateResult]:
+    """Prepend gates from the last report that this run didn't produce (a partial rerun)."""
+    path = out_dir / f"{probe}.json"
+    if not path.exists():
+        return results
+    fresh = {r.gate for r in results}
+    old = [GateResult(g["gate"], GateStatus(g["status"]), g["summary"], g.get("details", {}))
+           for g in json.loads(path.read_text())["gates"] if g["gate"] not in fresh]
+    return old + results

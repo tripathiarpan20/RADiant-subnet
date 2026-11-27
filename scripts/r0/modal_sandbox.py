@@ -135,7 +135,9 @@ def gpu_gates(gpu: str, remote: dict[str, Any], wall_s: float, load_timeout: flo
     ]
 
 
-def _run_sandbox(modal, app, image, *, gpu: str | None, timeout: int, command: list[str]) -> tuple[str, int | None, float]:
+def _run_sandbox(modal, app, image, *, gpu: str | None, timeout: int,
+                 command: list[str]) -> tuple[str, int | None, float, bool]:
+    """Return (output, returncode, wall seconds, timed_out)."""
     sb = None
     t0 = time.monotonic()
     try:
@@ -144,14 +146,19 @@ def _run_sandbox(modal, app, image, *, gpu: str | None, timeout: int, command: l
             block_network=True, name=f"r0-{(gpu or 'cpu').lower()}-{uuid.uuid4().hex[:8]}",
             tags={"purpose": "r0-feasibility"},
         )
-        sb.wait(raise_on_termination=False)
+        try:
+            sb.wait(raise_on_termination=False)
+        except Exception as exc:
+            if type(exc).__name__ == "SandboxTimeoutError":
+                return "", None, time.monotonic() - t0, True
+            raise
         stdout = sb.stdout.read()
         stderr = sb.stderr.read()
         if isinstance(stdout, bytes):
             stdout = stdout.decode("utf-8", "replace")
         if isinstance(stderr, bytes):
             stderr = stderr.decode("utf-8", "replace")
-        return stdout + ("\n" + stderr[-2000:] if stderr else ""), sb.returncode, time.monotonic() - t0
+        return stdout + ("\n" + stderr[-2000:] if stderr else ""), sb.returncode, time.monotonic() - t0, False
     finally:
         if sb is not None:
             try:
@@ -175,7 +182,7 @@ def run(args: argparse.Namespace) -> list[GateResult]:
     results: list[GateResult] = []
     for gpu in [g.strip() for g in args.gpus.split(",") if g.strip()]:
         try:
-            out, code, wall = _run_sandbox(modal, app, image, gpu=gpu, timeout=args.sandbox_timeout,
+            out, code, wall, _ = _run_sandbox(modal, app, image, gpu=gpu, timeout=args.sandbox_timeout,
                                            command=["python", "-c", REMOTE_PROBE])
             remote = parse_remote(out)
             results += gpu_gates(gpu, remote, wall, args.model_load_timeout)
@@ -188,13 +195,14 @@ def run(args: argparse.Namespace) -> list[GateResult]:
         cpu_image = modal.Image.debian_slim(python_version="3.12")
         limit = 10
         try:
-            out, code, wall = _run_sandbox(modal, app, cpu_image, gpu=None, timeout=limit,
-                                           command=["sleep", "120"])
-            killed = wall < 60 and code != 0
+            out, code, wall, timed_out = _run_sandbox(modal, app, cpu_image, gpu=None, timeout=limit,
+                                                      command=["sleep", "120"])
+            killed = wall < 60 and (timed_out or code not in (0, None))
             results.append(GateResult(
                 "modal_timeout_enforced", GateStatus.PASSED if killed else GateStatus.FAILED,
-                f"sandbox with a {limit}s timeout running sleep 120 ended after {wall:.0f}s (exit {code})",
-                {"timeout_s": limit, "wall_s": round(wall, 1), "returncode": code}))
+                f"sandbox with a {limit}s timeout running sleep 120 was stopped after {wall:.0f}s "
+                f"({'SandboxTimeoutError' if timed_out else f'exit {code}'})",
+                {"timeout_s": limit, "wall_s": round(wall, 1), "returncode": code, "timed_out": timed_out}))
         except Exception as exc:
             results.append(GateResult("modal_timeout_enforced", GateStatus.FAILED,
                                       f"{type(exc).__name__}: {str(exc)[:300]}"))

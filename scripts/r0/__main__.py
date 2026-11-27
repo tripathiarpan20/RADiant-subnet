@@ -18,7 +18,7 @@ import argparse
 import importlib
 import sys
 
-from .report import GateResult, exit_gate_met, write_results
+from .report import GateResult, exit_gate_met, merge_previous, write_results
 
 PROBES = {
     "datahive": "scripts.r0.datahive",
@@ -33,6 +33,8 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="python -m scripts.r0", description=__doc__,
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--no-write", action="store_true", help="print results without writing the JSON report")
+    parser.add_argument("--merge", action="store_true",
+                        help="keep gates from the existing report that this run did not produce")
     sub = parser.add_subparsers(dest="probe", required=True)
     modules = {}
     for name, path in PROBES.items():
@@ -46,7 +48,7 @@ def main(argv: list[str] | None = None) -> int:
     for r in results:
         print(f"[{r.status.value:>8}] {r.gate}: {r.summary}")
     if not args.no_write:
-        print(f"wrote {write_results(args.probe, results)}")
+        print(f"wrote {write_results(args.probe, merge_previous(args.probe, results) if args.merge else results)}")
     return 0 if exit_gate_met(results) else 1
 
 

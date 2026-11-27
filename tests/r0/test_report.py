@@ -34,3 +34,12 @@ def test_secrets_are_redacted_by_key_and_by_value(tmp_path):
     assert d["token_present"] is True
     assert d["nested"][0]["api_key"] == "[REDACTED]"
     assert doc["exit_gate_met"] is True
+
+
+def test_merge_keeps_gates_a_partial_rerun_did_not_produce(tmp_path):
+    from scripts.r0.report import merge_previous
+
+    write_results("m", [GateResult("a", GateStatus.PASSED, "old a"), GateResult("b", GateStatus.FAILED, "old b")],
+                  out_dir=tmp_path)
+    merged = merge_previous("m", [GateResult("b", GateStatus.PASSED, "new b")], out_dir=tmp_path)
+    assert [(r.gate, r.summary) for r in merged] == [("a", "old a"), ("b", "new b")]
