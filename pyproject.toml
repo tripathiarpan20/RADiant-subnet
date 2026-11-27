@@ -13,8 +13,12 @@ dependencies = ["numpy>=1.26"]
 radiant-sdk = "radiant_sdk.cli:main"
 
 [project.optional-dependencies]
+# Chain access (watcher, weights, and `radiant-sdk submit`). Same SDK
+# version Pareton runs, so the ported chain code behaves the same.
+chain = ["bittensor==11.0.2"]
 # What `radiant-sdk validate` needs on a miner's machine.
 sdk = [
+    "bittensor==11.0.2",
     "safetensors>=0.4",
     "requests>=2.32",
     "huggingface_hub>=0.26",
