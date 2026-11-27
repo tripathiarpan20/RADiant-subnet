@@ -77,9 +77,25 @@ def _payment_ref(result: Any) -> tuple[int, int] | None:
     return (int(block), int(index)) if block.isdigit() and index.isdigit() else None
 
 
+def _check_fee_at_block(base: str, campaign_id: str, block: int, paid: dict[str, str]) -> None:
+    """The fee in force at the payment's block must be no more than what was paid, to the same recipient.
+
+    A fee change can take effect between quoting and inclusion. Committing an
+    underpaid proof would only be rejected, so stop before committing.
+    """
+    history = fetch_campaign(campaign_id, api_url=base)["submission_fee_history"]
+    entry = next((e for e in reversed(history) if e["effective_from_block"] <= block), None)
+    if entry is None:
+        raise ValueError(f"no fee is in force at block {block}")
+    if entry["recipient"] != paid["recipient"] or Decimal(entry["amount_tao"]) > Decimal(paid["amount_tao"]):
+        raise ValueError(f"payment at block {block} does not meet the fee in force then ({entry['amount_tao']} to "
+                         f"{entry['recipient']}). Nothing was committed; don't reuse this payment for this campaign.")
+
+
 def submit(zip_path: Path, campaign_id: str, *, api_url: str | None, network: str, netuid: int, wallet_name: str,
            wallet_hotkey: str, yes: bool = False, dry_run: bool = False, max_fee_tao: str | None = None,
-           payment_block: int | None = None, payment_tx: int | None = None) -> dict[str, Any]:
+           payment_block: int | None = None, payment_tx: int | None = None,
+           wait_s: float = 0) -> dict[str, Any]:
     import bittensor as bt
 
     from .checks import code_sha256 as code_hash
@@ -147,7 +163,12 @@ def submit(zip_path: Path, campaign_id: str, *, api_url: str | None, network: st
     if payment_block is not None:
         block, index = payment_block, payment_tx
         say(f"reusing payment {block}-{index}")
+        _check_fee_at_block(base, campaign_id, block, fee)
     elif fee_rao > 0:
+        fresh = fetch_campaign(campaign_id, api_url=base)["submission_fee"]  # the fee may have changed meanwhile
+        if fresh != fee:
+            raise ValueError(f"the campaign fee changed to {fresh['amount_tao']} {currency} to {fresh['recipient']} "
+                             "while uploading; rerun submit to see and confirm the new fee (nothing was paid)")
         if not yes:
             print(f"Pay {fee['amount_tao']} {currency} to {fee['recipient']} from coldkey {wallet_name}? [y/N] ",
                   end="", file=sys.stderr, flush=True)  # stderr: stdout stays one JSON document
@@ -164,6 +185,7 @@ def submit(zip_path: Path, campaign_id: str, *, api_url: str | None, network: st
                              "rerun with --payment-block/--payment-tx")
         block, index = ref
         say(f"paid {fee['amount_tao']} {currency} (payment {block}-{index})")
+        _check_fee_at_block(base, campaign_id, block, fee)
     else:
         block = index = None
 
@@ -176,6 +198,27 @@ def submit(zip_path: Path, campaign_id: str, *, api_url: str | None, network: st
         hint = f" Reuse the payment with --payment-block {block} --payment-tx {index}." if block else ""
         raise ValueError(f"commitment rejected: {getattr(result, 'message', None) or result}.{hint}")
     say(f"committed on netuid {netuid}: {payload}")
-    return {"status": "committed", "sha256": sha, "code_sha256": code, "object_key": key,
+    intake = wait_for_intake(base, sha, wait_s) if wait_s > 0 else None
+    return {"status": "committed", "intake": intake, "sha256": sha, "code_sha256": code, "object_key": key,
             "payment": None if block is None else f"{block}-{index}", "commitment": payload,
             "status_url": f"{base}/v1/submissions/{sha}"}
+
+
+def wait_for_intake(base: str, sha: str, wait_s: float, every_s: float = 12.0) -> dict[str, Any] | None:
+    """Poll /v1/submissions until the watcher queues or rejects this zip, or the wait ends."""
+    deadline = time.monotonic() + wait_s
+    say(f"waiting up to {wait_s:.0f}s for the validator's watcher to pick it up")
+    while time.monotonic() < deadline:
+        try:
+            body = _http("GET", f"{base}/v1/submissions/{sha}")
+        except ValueError:
+            body = None  # 404 until the watcher has seen it
+        if body and (body.get("submissions") or body.get("rejections")):
+            for sub in body.get("submissions", []):
+                say(f"queued as submission {sub['submission_id']} ({sub['state']})")
+            for rej in body.get("rejections", []):
+                say(f"rejected at intake: {rej['reason']}")
+            return body
+        time.sleep(every_s)
+    say("not picked up yet; check later with `radiant-sdk status`")
+    return None

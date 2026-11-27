@@ -85,7 +85,7 @@ def cmd_submit(args) -> int:
                         wallet_name=args.wallet_name or os.environ.get("WALLET_NAME", "default"),
                         wallet_hotkey=args.wallet_hotkey or os.environ.get("WALLET_HOTKEY", "default"),
                         yes=args.yes, dry_run=args.dry_run, max_fee_tao=args.max_fee_tao,
-                        payment_block=args.payment_block, payment_tx=args.payment_tx)
+                        payment_block=args.payment_block, payment_tx=args.payment_tx, wait_s=args.wait)
     except ValueError as exc:
         print(f"radiant-sdk submit: refused: {exc}", file=sys.stderr)
         return 2
@@ -141,6 +141,8 @@ def main(argv: list[str] | None = None) -> int:
             sp.add_argument("--max-fee-tao", help="refuse if the campaign fee is higher")
             sp.add_argument("--payment-block", type=int, help="reuse a fee already paid (after a failed commit)")
             sp.add_argument("--payment-tx", type=int)
+            sp.add_argument("--wait", type=float, default=0, metavar="SECONDS",
+                            help="after committing, wait this long for the validator to queue or reject it")
         if name == "validate":
             sp.add_argument("--modal-environment", default=None)
             sp.add_argument("--static-only", action="store_true", help="skip Hugging Face and Modal")
