@@ -129,3 +129,33 @@ def rejections_for(conn, sha256: str) -> list[dict[str, Any]]:
 def submission_events(conn, submission_id: int) -> list[dict[str, Any]]:
     return conn.execute("SELECT state, detail, at FROM submission_events WHERE submission_id = %s ORDER BY at, id",
                         (submission_id,)).fetchall()
+
+
+# ── upload gating (R3 hardening) ────────────────────────────────────────────
+
+
+def replace_registered_hotkeys(conn, rows: list[tuple[str, int, str]], block: int) -> None:
+    """Mirror the metagraph: [(hotkey, uid, coldkey)] as of ``block``, in one transaction."""
+    with conn.transaction():
+        conn.execute("DELETE FROM registered_hotkeys")
+        if rows:
+            with conn.cursor() as cur:
+                cur.executemany("INSERT INTO registered_hotkeys (hotkey, uid, coldkey, synced_block) "
+                                "VALUES (%s, %s, %s, %s)", [(h, u, c, block) for h, u, c in rows])
+
+
+def registration(conn, hotkey: str) -> tuple[bool, bool]:
+    """(the metagraph has been synced at least once, this hotkey is registered)."""
+    synced = conn.execute("SELECT 1 FROM registered_hotkeys LIMIT 1").fetchone() is not None
+    found = conn.execute("SELECT 1 FROM registered_hotkeys WHERE hotkey = %s", (hotkey,)).fetchone() is not None
+    return synced, found
+
+
+def uploads_in_last_hour(conn, hotkey: str) -> int:
+    return conn.execute("SELECT count(*) AS n FROM upload_authorizations WHERE hotkey = %s "
+                        "AND created_at > now() - interval '1 hour'", (hotkey,)).fetchone()["n"]
+
+
+def record_upload(conn, *, hotkey: str, campaign_id: str, sha256: str, object_key: str, size_bytes: int) -> None:
+    conn.execute("INSERT INTO upload_authorizations (hotkey, campaign_id, sha256, object_key, size_bytes) "
+                 "VALUES (%s, %s, %s, %s, %s)", (hotkey, campaign_id, sha256, object_key, size_bytes))

@@ -42,6 +42,7 @@ class Settings:
     s3_presign_endpoint_url: str
     upload_auth_ttl_s: int
     presign_expires_s: int
+    uploads_per_hotkey_per_hour: int
     # chain intake (R3)
     poll_interval_s: int
     fee_exempt_hotkeys: frozenset[str]
@@ -74,6 +75,7 @@ class Settings:
             s3_presign_endpoint_url=e.get("RADIANT_S3_PRESIGN_ENDPOINT_URL", "") or e.get("RADIANT_S3_ENDPOINT_URL", ""),
             upload_auth_ttl_s=_int(e, "RADIANT_UPLOAD_AUTH_TTL_S", 300),
             presign_expires_s=_int(e, "RADIANT_PRESIGN_EXPIRES_S", 600),
+            uploads_per_hotkey_per_hour=_int(e, "RADIANT_UPLOADS_PER_HOTKEY_PER_HOUR", 10),
             poll_interval_s=_int(e, "RADIANT_POLL_INTERVAL_S", 30),
             fee_exempt_hotkeys=frozenset(h.strip() for h in e.get("RADIANT_FEE_EXEMPT_HOTKEYS", "").split(",")
                                          if h.strip()),

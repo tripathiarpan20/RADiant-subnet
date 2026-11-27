@@ -94,6 +94,14 @@ curl -fsS "$API/v1/info" | grep -q '"netuid":292' || fail "/v1/info does not rep
 SEEDED=$(curl -fsS "$API/v1/campaigns/testnet-cxr-01" | python3 -c 'import json,sys; print(json.load(sys.stdin)["submission_fee"]["recipient"])')
 [[ "$SEEDED" == "$RECIPIENT" ]] || fail "campaign fee recipient is $SEEDED, .env says $RECIPIENT"
 pass "API at $API on test/292; campaign fee goes to ${RECIPIENT:0:8}… (from .env)"
+# The API presigns only for registered hotkeys, which the watcher syncs.
+for i in $(seq 1 20); do
+  dc exec -T postgres psql -U radiant -d radiant -Atc "SELECT count(*) FROM registered_hotkeys" 2>/dev/null \
+    | grep -qv '^0$' && break
+  sleep 3
+  [[ $i -eq 20 ]] && fail "the watcher has not synced the metagraph"
+done
+pass "watcher synced netuid 292's registered hotkeys"
 if [[ $STACK_ONLY -eq 1 ]]; then
   dc run --rm --no-deps watcher python -m worker.watcher --once > "$W/scan.json" || fail "watcher scan failed"
   pass "watcher scanned netuid 292: $(python3 -c 'import json,sys; print(len(json.load(open(sys.argv[1]))))' "$W/scan.json") RADiant commitments on chain"

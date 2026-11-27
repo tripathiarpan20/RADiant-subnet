@@ -278,6 +278,12 @@ def test_upload_api_presigns_for_a_signed_request(settings):
               "network": "test", "netuid": 292}
     client = TestClient(app)
     body = {**fields, "signature": MINER.sign(upload_message(fields)).hex()}
+    assert client.post("/v1/uploads/solution", json=body).status_code == 503  # metagraph not synced yet
+    with connect(settings.database_url) as conn:
+        store.replace_registered_hotkeys(conn, [(OTHER.ss58_address, 0, "")], 100)
+    assert client.post("/v1/uploads/solution", json=body).status_code == 403  # synced, but not registered
+    with connect(settings.database_url) as conn:
+        store.replace_registered_hotkeys(conn, [(MINER.ss58_address, 44, MINER_COLD.ss58_address)], 101)
     r = client.post("/v1/uploads/solution", json=body)
     assert r.status_code == 200, r.text
     p = r.json()
@@ -290,3 +296,34 @@ def test_upload_api_presigns_for_a_signed_request(settings):
     assert client.post("/v1/uploads/solution",
                        json={**big, "signature": MINER.sign(upload_message(big)).hex()}).status_code == 413
     assert client.get(f"/v1/submissions/{sha}").status_code == 404
+
+
+
+def test_upload_api_caps_presigns_per_hotkey_per_hour(settings, monkeypatch):
+    from fastapi.testclient import TestClient
+
+    from api.server import app
+
+    monkeypatch.setenv("RADIANT_UPLOADS_PER_HOTKEY_PER_HOUR", "2")
+    with connect(settings.database_url) as conn:
+        store.replace_registered_hotkeys(conn, [(MINER.ss58_address, 44, "")], 100)
+    client = TestClient(app)
+    codes = []
+    for i in range(3):
+        data = solution_zip(f"cap{i}")
+        sha, code = hashes(data)
+        fields = {"campaign_id": "testnet-cxr-01", "hotkey": MINER.ss58_address, "sha256": sha, "code_sha256": code,
+                  "size_bytes": len(data), "upload_id": str(uuid.uuid4()), "expires_at": int(time.time()) + 120,
+                  "network": "test", "netuid": 292}
+        codes.append(client.post("/v1/uploads/solution",
+                                 json={**fields, "signature": MINER.sign(upload_message(fields)).hex()}).status_code)
+    assert codes == [200, 200, 429]
+
+
+def test_presigned_put_refuses_a_body_over_the_declared_size(settings):
+    data = solution_zip("small")
+    sha, _ = hashes(data)
+    p = s3.presign_upload(settings, campaign_id="testnet-cxr-01", hotkey=MINER.ss58_address, sha256=sha,
+                          size_bytes=len(data), upload_id=str(uuid.uuid4()), expires_in=300)
+    assert p.required_headers["Content-Length"] == str(len(data))
+    assert "content-length" in p.upload_url.lower()  # signed, not just advised

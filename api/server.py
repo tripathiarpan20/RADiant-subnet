@@ -119,10 +119,19 @@ def upload_solution(body: UploadRequest, response: Response) -> dict[str, Any]:
         raise HTTPException(403, str(exc)) from None
     with connect() as conn:
         row = store.get_campaign(conn, body.campaign_id)
+        synced, registered = store.registration(conn, body.hotkey)
+        recent = store.uploads_in_last_hour(conn, body.hotkey)
     if row is None:
         raise HTTPException(404, "no such campaign")
     if row["status"] != "open":
         raise HTTPException(400, "campaign is not open")
+    # Only the subnet's own hotkeys may use the bucket the validator pays for.
+    if not synced:
+        raise HTTPException(503, "validator is still syncing the metagraph; retry in a minute")
+    if not registered:
+        raise HTTPException(403, f"hotkey is not registered on netuid {s.netuid}")
+    if recent >= s.uploads_per_hotkey_per_hour:
+        raise HTTPException(429, f"at most {s.uploads_per_hotkey_per_hour} uploads per hotkey per hour")
     cap = row["manifest"]["limits"]["max_solution_zip_mb"] * 1_000_000
     if body.size_bytes > cap:
         raise HTTPException(413, f"solution zip is {body.size_bytes} bytes, over the campaign's {cap}")
@@ -134,6 +143,10 @@ def upload_solution(body: UploadRequest, response: Response) -> dict[str, Any]:
         raise HTTPException(409, str(exc)) from None
     except Exception:
         raise HTTPException(503, "upload storage unavailable") from None
+    if not p.already_uploaded:
+        with connect() as conn:
+            store.record_upload(conn, hotkey=body.hotkey, campaign_id=body.campaign_id, sha256=body.sha256,
+                                object_key=p.object_key, size_bytes=body.size_bytes)
     return {"upload_url": p.upload_url, "object_key": p.object_key, "expires_in": p.expires_in,
             "required_headers": p.required_headers, "already_uploaded": p.already_uploaded}
 

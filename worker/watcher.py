@@ -41,6 +41,12 @@ def scan_once(s: config.Settings) -> list[dict]:
         return s3.fetch_bounded(s, key, max_bytes)
 
     with connect(s.require_database(), autocommit=True) as conn:
+        from campaign import store
+
+        hotkeys = [str(h) for h in meta.hotkeys]
+        coldkeys = [str(c) for c in (getattr(meta, "coldkeys", None) or [""] * len(hotkeys))]
+        store.replace_registered_hotkeys(conn, [(h, uid, coldkeys[uid] if uid < len(coldkeys) else "")
+                                                for uid, h in enumerate(hotkeys)], block)
         results = scan(conn, meta, revealed, fetch_block=partial(fetch_block_payment_view, subtensor),
                        fetch_object=fetch_object, s=s)
     out = [{"submission_id": r.submission_id, "reason": r.reason} for r in results]
