@@ -1,0 +1,42 @@
+[Unit]
+Description=RADiant Validator Gate Worker
+Documentation=file:///opt/radiant/ops/README.md
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+User=radiant-worker
+Group=radiant-worker
+WorkingDirectory=/opt/radiant
+EnvironmentFile=/etc/radiant/worker.env
+Environment=PYTHONUNBUFFERED=1
+Environment=HOME=/tmp
+Environment=RADIANT_WORKER_SCRATCH=/var/lib/radiant/scratch
+Environment=HF_HOME=/var/lib/radiant/scratch/hf-cache
+ExecStart=/opt/radiant/.venv/bin/python -m worker
+Restart=on-failure
+RestartSec=5
+# Reap the entire cgroup on stop/restart so g7 Modal image build subprocesses cannot linger.
+KillMode=control-group
+TimeoutStopSec=120
+
+# Service isolation (portable across regular VMs, bare-metal, and Confidential VMs)
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictNamespaces=yes
+RestrictSUIDSGID=yes
+CapabilityBoundingSet=
+AmbientCapabilities=
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+ReadWritePaths=/var/lib/radiant/scratch
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target

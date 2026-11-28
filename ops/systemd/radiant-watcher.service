@@ -1,0 +1,37 @@
+[Unit]
+Description=RADiant Validator Chain Watcher
+Documentation=file:///opt/radiant/ops/README.md
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+User=radiant-watcher
+Group=radiant-watcher
+WorkingDirectory=/opt/radiant
+EnvironmentFile=/etc/radiant/watcher.env
+Environment=PYTHONUNBUFFERED=1
+Environment=HOME=/tmp
+ExecStart=/opt/radiant/.venv/bin/python -m worker.watcher
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=30
+
+# Service isolation (portable across regular VMs, bare-metal, and Confidential VMs)
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictNamespaces=yes
+RestrictSUIDSGID=yes
+CapabilityBoundingSet=
+AmbientCapabilities=
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target

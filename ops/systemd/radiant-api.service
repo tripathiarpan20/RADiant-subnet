@@ -1,0 +1,39 @@
+[Unit]
+Description=RADiant Validator Intake API
+Documentation=file:///opt/radiant/ops/README.md
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+User=radiant-api
+Group=radiant-api
+WorkingDirectory=/opt/radiant
+EnvironmentFile=/etc/radiant/api.env
+Environment=PYTHONUNBUFFERED=1
+Environment=HOME=/tmp
+Environment=RADIANT_API_HOST=127.0.0.1
+Environment=RADIANT_API_PORT=8000
+ExecStart=/opt/radiant/.venv/bin/python -m api
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=30
+
+# Service isolation (portable across regular VMs, bare-metal, and Confidential VMs)
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictNamespaces=yes
+RestrictSUIDSGID=yes
+CapabilityBoundingSet=
+AmbientCapabilities=
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target

@@ -1,4 +1,5 @@
-# RADiant owner-validator stack (R1).
+# RADiant owner-validator stack for LOCAL DEVELOPMENT & CI (local Postgres + MinIO + Adminer).
+# For production / testnet VMs (Neon Postgres + Hippius S3 + native systemd), see ops/README.md.
 #
 #   cp .env.example .env   # then set the passwords
 #   docker compose up -d --build

@@ -8,8 +8,8 @@ Every phase keeps this current. Anything deferred to launch goes here.
 - [ ] Point `DATAHIVE_API_BASE` from DataHive's staging API to its production API.
 - [ ] Make the production API domain the SDK's default `RADIANT_API_URL`.
 - [x] The fee recipient is the owner coldkey in `.env` (`RADIANT_FEE_RECIPIENT`); seeding refuses without it.
-- [ ] Set `RADIANT_API_SITE` to the API domain and bind Caddy to 0.0.0.0:80/443 on the VPS.
-- [ ] Re-pin the Chainguard MinIO digest (`docker-compose.yml`) to a current build before launch.
+- [ ] Set `RADIANT_API_SITE` in `/etc/radiant/caddy.env` to the API domain and expose ports 80/443 on the validator host (see `ops/README.md`).
+- [ ] Re-pin the Chainguard MinIO digest (`docker-compose.yml`, local dev only) as needed.
 
 ## DataHive checks (moved from R0 to R5)
 
@@ -47,8 +47,9 @@ Every phase keeps this current. Anything deferred to launch goes here.
 - [ ] R3: a public API domain behind Caddy for miners on other machines.
 - [ ] R3: point the app's `RADIANT_S3_*` at whichever store the storage probe passes (Hippius or MinIO); the R0 probe uses `R0_HIPPIUS_S3_*`.
 - [ ] R7: `radiant-sdk prepare --from <hash>` to fork a revealed solution.
-- [ ] R8: nightly Postgres backups off the VPS (`pg_dump` to the bucket) and a restore drill in the runbook; the database holds fee history, leader history and round evidence.
-- [ ] R8: a validator operator guide (host, .env, Modal, HF pin org, DataHive, wallets), alongside docs/miners.md.
+- [ ] R8: verify Neon PITR retention plus scheduled off-Neon `pg_dump` backups to object storage and a restore drill in `ops/README.md`; the database holds fee history, leader history and round evidence.
+- [x] Production deployment runbook (`ops/README.md`, `ops/systemd/`, `ops/install_systemd.sh`) using Neon Postgres + Hippius S3 + portable `systemd` units (regular VM, bare-metal, or Confidential CPU VM); keep `docker-compose.yml` for local dev/CI.
+- [ ] R8: extend `ops/README.md` with DataHive, weights/wallet, and alerting sections as R5–R8 land, alongside `docs/miners.md`.
 - [ ] Push the repo and confirm `.github/workflows/ci.yml` runs green (not yet run on GitHub).
 
 ## Carried from R3

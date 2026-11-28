@@ -1,7 +1,9 @@
 # TLS termination and the public entry point. Locally RADIANT_API_SITE is
-# ":80" (plain HTTP, published on 127.0.0.1:8080); on the VPS set it to the
-# API domain, e.g. api.radiant.example, and Caddy fetches a certificate.
+# ":80" (plain HTTP, published on 127.0.0.1:8080) and the upstream defaults
+# to the docker-compose service "api:8000". On a systemd host, set
+# RADIANT_API_SITE to the API domain (e.g. api.radiant.example) and
+# RADIANT_API_UPSTREAM=127.0.0.1:8000 in /etc/radiant/caddy.env.
 {$RADIANT_API_SITE::80} {
 	encode zstd gzip
-	reverse_proxy api:8000
+	reverse_proxy {$RADIANT_API_UPSTREAM:api:8000}
 }
