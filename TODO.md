@@ -13,9 +13,16 @@ Every phase keeps this current. Anything deferred to launch goes here.
 
 ## DataHive checks (moved from R0 to R5)
 
-- [ ] Run the DataHive reachability probe from the Hetzner validator host once staging exists (`python -m scripts.r0 datahive`), with the host IP on the key's allowlist.
+- [ ] Run the DataHive reachability probe from the production validator host (Hippius CVM or regular/bare-metal VM) once staging exists (`python -m scripts.r0 datahive`), with the host egress IP on the key's allowlist.
 - [ ] Run the DataHive fetch-time and rate-limit probe against staging, sized for 3 rounds of 100 studies a day.
 - [ ] Re-run the DataHive probe against production before launch.
+
+## R4.5 Production VM (Hippius CVM), Neon DB & systemd E2E
+
+- [ ] Provision a Hippius AMD SEV-SNP Confidential VM via the Hippius Compute API (`https://api.hippius.com/api`) and verify hardware attestation (`GET /api/compute/vms/{id}/attestation/`), keeping `ops/install_systemd.sh` and `ops/systemd/` portable to regular VMs and bare-metal.
+- [ ] Create Neon Postgres roles (`radiant_api`, `radiant_watcher`, `radiant_worker`, `radiant_readonly`) and run real-credential Neon integration checks (`db.migrate --grants-only` on direct URL, pooled-URL rejection in `db.migrate`, `-pooler.` runtime queries & `pg_advisory_xact_lock`, and negative least-privilege checks).
+- [ ] Bootstrap the validator stack on the Hippius CVM with `ops/install_systemd.sh`, optional `tmpfs` on `/var/lib/radiant/scratch`, `/etc/radiant/*.env`, and Caddy TLS; verify `radiant-{api,watcher,worker}` and `caddy` under `systemd`.
+- [ ] Run the DenseNet base miner end-to-end on/against the Hippius CVM using explicit `MODAL_TOKEN_ID`/`MODAL_TOKEN_SECRET` (not macOS `modal setup`): `radiant-sdk validate` -> `submit --wait` -> `radiant-watcher.service` -> `radiant-worker.service` -> `queued` with private pin in `radiant-bittensor` and `.env` stripped on Hippius S3.
 
 ## Storage checks (moved from R0 to R3)
 
