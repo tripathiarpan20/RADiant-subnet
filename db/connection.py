@@ -15,9 +15,20 @@ from psycopg.rows import dict_row
 import config
 
 
+def is_pooled_url(url: str) -> bool:
+    """True for transaction-pooled Postgres URLs (e.g. Neon's -pooler. endpoint / PgBouncer)."""
+    return "-pooler." in url or "pgbouncer=true" in url.lower()
+
+
 @contextlib.contextmanager
 def connect(url: str | None = None, *, autocommit: bool = False) -> Iterator[psycopg.Connection]:
-    conn = psycopg.connect(url or config.settings().require_database(), row_factory=dict_row, autocommit=autocommit)
+    target = url or config.settings().require_database()
+    # Managed transaction poolers (e.g. Neon's -pooler. endpoint / PgBouncer)
+    # cannot share server-side prepared statements across transactions.
+    kwargs: dict = {"row_factory": dict_row, "autocommit": autocommit}
+    if is_pooled_url(target):
+        kwargs["prepare_threshold"] = None
+    conn = psycopg.connect(target, **kwargs)
     try:
         yield conn
         if not autocommit:

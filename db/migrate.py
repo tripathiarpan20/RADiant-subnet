@@ -23,7 +23,7 @@ from pathlib import Path
 from psycopg import sql
 
 import config
-from db.connection import connect
+from db.connection import connect, is_pooled_url
 
 MIGRATIONS_DIR = Path(__file__).resolve().parent / "migrations"
 LOCK_KEY = 0x5241_4449  # "RADI"
@@ -43,6 +43,11 @@ def migration_files(directory: Path = MIGRATIONS_DIR) -> list[tuple[str, str, st
 
 
 def migrate(url: str, directory: Path = MIGRATIONS_DIR) -> list[str]:
+    if is_pooled_url(url):
+        raise MigrationError(
+            "db.migrate requires a direct (unpooled) Postgres URL because it uses session-level "
+            "pg_advisory_lock; remove '-pooler.' from the Neon host (keep pooled URLs for runtime services)"
+        )
     applied_now: list[str] = []
     with connect(url, autocommit=True) as conn:
         conn.execute("SELECT pg_advisory_lock(%s)", (LOCK_KEY,))
@@ -72,28 +77,52 @@ def migrate(url: str, directory: Path = MIGRATIONS_DIR) -> list[str]:
     return applied_now
 
 
-def _upsert_role(conn, role: str, password: str) -> None:
-    ident, lit = sql.Identifier(role), sql.Literal(password)
+def _can_manage_roles(conn) -> bool:
+    """True when the connected user can CREATE/ALTER roles (False on managed Postgres like Neon)."""
+    row = conn.execute("SELECT rolsuper OR rolcreaterole AS ok FROM pg_roles WHERE rolname = current_user").fetchone()
+    return bool(row and row["ok"])
+
+
+def _upsert_role(conn, role: str, password: str, *, grants_only: bool = False) -> bool:
+    """Create or update a role when permitted, else verify it already exists.
+
+    Returns True if role attributes (CREATE/ALTER ROLE) were managed, False when
+    running in managed/grants-only mode (e.g. Neon, where roles are created in
+    the Neon console/API and neondb_owner only applies GRANT/REVOKE).
+    """
+    ident = sql.Identifier(role)
     exists = conn.execute("SELECT 1 FROM pg_roles WHERE rolname = %s", (role,)).fetchone()
-    if exists:
-        conn.execute(sql.SQL("ALTER ROLE {} WITH LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE PASSWORD {}")
-                     .format(ident, lit))
-    else:
-        conn.execute(sql.SQL("CREATE ROLE {} WITH LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE PASSWORD {}")
-                     .format(ident, lit))
+    managed = not grants_only and _can_manage_roles(conn)
+    if managed:
+        if not password:
+            raise MigrationError(f"password is not set for role {role!r}")
+        lit = sql.Literal(password)
+        if exists:
+            conn.execute(sql.SQL("ALTER ROLE {} WITH LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE PASSWORD {}")
+                         .format(ident, lit))
+        else:
+            conn.execute(sql.SQL("CREATE ROLE {} WITH LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE PASSWORD {}")
+                         .format(ident, lit))
+    elif not exists:
+        raise MigrationError(
+            f"role {role!r} does not exist and current user cannot CREATE ROLE (e.g. Neon); "
+            f"create {role!r} in your database console/API first, then rerun db.migrate --grants-only"
+        )
     dbname = conn.execute("SELECT current_database() AS d").fetchone()["d"]
     conn.execute(sql.SQL("GRANT CONNECT ON DATABASE {} TO {}").format(sql.Identifier(dbname), ident))
     conn.execute(sql.SQL("GRANT USAGE ON SCHEMA public TO {}").format(ident))
     conn.execute(sql.SQL("REVOKE CREATE ON SCHEMA public FROM {}").format(ident))
+    return managed
 
 
-def ensure_readonly_role(url: str, role: str, password: str) -> None:
-    if not password:
-        raise MigrationError("RADIANT_DB_READONLY_PASSWORD is not set")
+def ensure_readonly_role(url: str, role: str, password: str, *, grants_only: bool = False) -> None:
     ident = sql.Identifier(role)
     with connect(url) as conn:
-        _upsert_role(conn, role, password)
-        conn.execute(sql.SQL("ALTER ROLE {} SET default_transaction_read_only = on").format(ident))
+        managed = _upsert_role(conn, role, password, grants_only=grants_only)
+        if managed:
+            conn.execute(sql.SQL("ALTER ROLE {} SET default_transaction_read_only = on").format(ident))
+        conn.execute(sql.SQL("REVOKE ALL ON ALL TABLES IN SCHEMA public FROM {}").format(ident))
+        conn.execute(sql.SQL("REVOKE ALL ON ALL SEQUENCES IN SCHEMA public FROM {}").format(ident))
         conn.execute(sql.SQL("GRANT SELECT ON ALL TABLES IN SCHEMA public TO {}").format(ident))
         conn.execute(sql.SQL("ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT ON TABLES TO {}").format(ident))
 
@@ -135,19 +164,22 @@ SERVICE_GRANTS: dict[str, list[tuple[str, str, bool]]] = {
 }
 
 
-def ensure_service_roles(url: str, roles: dict[str, tuple[str, str]]) -> list[str]:
-    """Provision least-privilege service roles for every service with a password configured.
+def ensure_service_roles(url: str, roles: dict[str, tuple[str, str]], *, grants_only: bool = False) -> list[str]:
+    """Provision least-privilege service roles for every configured service.
 
     ``roles`` maps service key ('api', 'watcher', 'worker') -> (role_name, password).
+    In normal mode, services without a password are skipped; in ``grants_only`` mode
+    (managed Postgres like Neon where passwords live outside SQL), every named role
+    is granted its exact table/sequence privileges.
     Re-revokes all table/sequence privileges first so removed grants never linger.
     """
     configured: list[str] = []
     with connect(url) as conn:
         for service, (role, password) in roles.items():
-            if not password:
+            if not role or (not grants_only and not password):
                 continue
             ident = sql.Identifier(role)
-            _upsert_role(conn, role, password)
+            _upsert_role(conn, role, password, grants_only=grants_only)
             conn.execute(sql.SQL("REVOKE ALL ON ALL TABLES IN SCHEMA public FROM {}").format(ident))
             conn.execute(sql.SQL("REVOKE ALL ON ALL SEQUENCES IN SCHEMA public FROM {}").format(ident))
             for privs, obj, is_seq in SERVICE_GRANTS[service]:
@@ -161,6 +193,8 @@ def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(prog="python -m db.migrate")
     p.add_argument("--status", action="store_true")
     p.add_argument("--skip-readonly-role", action="store_true")
+    p.add_argument("--grants-only", action="store_true",
+                   help="apply GRANT/REVOKE to pre-created roles without CREATE/ALTER ROLE (for Neon / managed Postgres)")
     args = p.parse_args(argv)
     s = config.settings()
     url = s.require_database()
@@ -174,12 +208,12 @@ def main(argv: list[str] | None = None) -> int:
     try:
         done = migrate(url)
         if not args.skip_readonly_role:
-            ensure_readonly_role(url, s.readonly_role, s.readonly_password)
+            ensure_readonly_role(url, s.readonly_role, s.readonly_password, grants_only=args.grants_only)
         svc_roles = ensure_service_roles(url, {
             "api": (s.api_db_role, s.api_db_password),
             "watcher": (s.watcher_db_role, s.watcher_db_password),
             "worker": (s.worker_db_role, s.worker_db_password),
-        })
+        }, grants_only=args.grants_only)
     except MigrationError as exc:
         print(f"migrate: {exc}", file=sys.stderr)
         return 1
